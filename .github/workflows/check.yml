@@ -17,7 +17,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: 'pip'
 
       - name: Install test extras
         run: python3 -m pip install Pygments
@@ -44,7 +43,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: 'pip'
 
       - name: Install WeasyPrint system libs and CJK fallback fonts
         # libcairo2 / libpango / libharfbuzz are required by WeasyPrint at
