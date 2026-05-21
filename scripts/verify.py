@@ -7,6 +7,7 @@ the rendered examples when invoked for the full suite.
 """
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -158,6 +159,11 @@ def verify_target(
         primary = next(iter(expected))
         if not fallback_present:
             issues.append(f"no recognizable font embedded in {out.name}")
+        elif os.environ.get("KAMI_ALLOW_FALLBACK_ONLY"):
+            # CI / headless boxes never have commercial fonts (TsangerJinKai02,
+            # Charter). Treat "primary missing, fallback present" as a warning
+            # there so CI can still gate page-count regressions.
+            print(f"  WARN: {name}: primary font ({primary}) not embedded; using fallback")
         else:
             issues.append(f"primary font ({primary}) not embedded; using fallback")
 
