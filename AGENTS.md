@@ -70,6 +70,7 @@ bash scripts/package-skill.sh
 ## Working Rules
 
 - Style changes must update `references/design.md` and the matching template tokens.
+- Landing or documentation-site work follows `references/design.md` Section 11: «Documentation site» for the doc shell (sidebar rail, on-this-page TOC, borderless prev/next pager, build-time zero-JS code highlighting) and «Responsive screenshot verification» (screenshot at 375px / 1280px per locale, objective line-widow scan) before shipping.
 - Content changes should avoid CSS churn unless layout behavior is part of the task.
 - For document or template tasks, lock the output contract before editing: language, template, output format, page or length target, visual acceptance check, and verification command.
 - Prefer the nearest existing template and deterministic verifier. Do not add a template, stabilizer profile, shared CSS layer, dependency, script flag, or optional mode unless the current request cannot be satisfied without it.
