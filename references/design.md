@@ -1132,6 +1132,7 @@ Every screenshot path must resolve from the repo or a stable public URL. Never r
 - `max-width: 1120px` centered, padding `88px 64px 120px`
 - Sections numbered `00 · Label` through `04 · Label` with `section-num` / `section-title` / `section-lede` pattern
 - Two responsive breakpoints: `880px` (tablet) and `480px` (phone)
+- Section rhythm is a system, not per-gap. Run section spacing as one responsive ladder (e.g. desktop 96/72, tablet 72/54, phone 56/42). When a page reads too airy or too tight, scale the *whole* set by a single factor (about 0.75) across all breakpoints at once; nudging one gap leaves asymmetry, and asymmetry that survives tuning is structural. At the phone breakpoint step gutters down (64px to 16px) and shrink display sizes (hero title, price amount) in the same pass.
 
 ### Eyebrow
 
@@ -1144,8 +1145,12 @@ Every screenshot path must resolve from the repo or a stable public URL. Never r
 - Title: 96px (EN) / 88px (CN), weight 500, letter-spacing 0
 - Entrance animation: `translateY(10px) + blur(6px)` fading in over 900ms with 120ms delay
 - Tagline: 21px (EN) / 20px (CN), olive color, letter-spacing 0.2px (EN) / 0.4px (CN), max-width 820px
-- Tokens row: small key facts as `<span><b>value</b> label</span>`, 13px stone, `--latin-ui` font
+- Tokens row: a few small chips as `<span>quality</span>`, 13px stone, `--latin-ui` font
 - CTA: pill buttons (border-radius 999px), primary filled + ghost outlined, 15px, 13px 28px padding
+- Quality chips, not a facts list. The tokens row should carry product *qualities* (good-looking, lightweight, AI-friendly), not an inventory (license, package manager, OS version). Push every hard fact to the footer or docs where it is referenceable. Pick about three.
+- No chip may repeat the tagline. Read tagline and chips together and cut any concept stated twice. If trimming a chip leaves an orphaned separator, the row should collapse to one clean line, not a dangling dot.
+- Wrap-safe chip separator. Put the middot on `span:not(:last-child)::after`, never on `::before` of the following item, so a chip that wraps to the next line never carries a leading dot. Use `color-mix(... 58%, transparent)` so the dot stays quieter than the text.
+- Line-widow discipline (title + tagline). Eliminate 1-2 word last lines by trimming the copy so the block rebalances, not by adding a `max-width` cap (a cap narrower than its container wraps early and leaves empty space on the right, which reads as a premature break). `text-wrap: balance` on the title and `pretty` on the tagline help only as a backstop; do not rely on them. Leave inherently-two-line notes alone.
 
 ### Gallery
 
@@ -1171,6 +1176,8 @@ Two variants only:
 
 Both: pill shape (999px radius), 15px `--latin-ui`, weight 500, 1.5px border, min-width 158px.
 
+Mobile resting state: natural width, left-aligned to the hero text edge, height unchanged. Do not center them (reads as floating), do not stretch edge-to-edge with `flex: 1` (reads heavy), and never drop button height to relieve a "too full" feel; fullness is a width and spacing problem, not a height one. A left edge that does not line up with the text and chips reads as an accidental gap. Verify at 320px and 375px with no overflow.
+
 ### Pricing
 
 - Amount: 112px serif, letter-spacing 0
@@ -1186,8 +1193,21 @@ Both: pill shape (999px radius), 15px `--latin-ui`, weight 500, 1.5px border, mi
 ### Code Block
 
 - `pre.code`: ivory background, 1px border, 6px radius, 18px 22px padding
-- Font: `--mono` 13.5px, tabular-nums, line-height 1.55
-- Syntax: `.c` (comments) in stone, `.k` (keywords) in brand
+- Font: `--mono` 13.5px, tabular-nums, line-height 1.55; reduce to 11.5px at the phone breakpoint (480px) so wide lines stay legible without horizontal scroll. `code { min-width: max-content }` lets long lines scroll instead of wrapping.
+- Inline `code` is a distinct style, not the block palette: brand-tint background, brand text, 1px hairline, `0.9em`.
+
+Screen code blocks may use a dark surface (`--shot-bg: #141318`, the same frame as the gallery) instead of ivory. Highlight at build time with zero runtime JS: a script bakes static `<span class>` markup (e.g. Pygments) and is idempotent, so re-running it after any doc edit refreshes the output; merge adjacent same-class spans so the markup stays small. Plain code stays the source of truth; the spans are generated, never hand-authored. Keep the token palette restrained on the dark surface:
+
+| Token | Hex | Role |
+|---|---|---|
+| Comment | `#79756a` | faint, italic |
+| Keyword | `#84aad6` | soft blue |
+| String | `#8cbb91` | muted green |
+| Number | `#cbab86` | sand |
+| Function/Class | `#d6c78c` | sand-gold |
+| Builtin/Constant | `#b59ccd` | muted violet |
+
+Blocks without `class="language-*"` stay monochrome.
 
 ### Metrics
 
@@ -1206,6 +1226,7 @@ Both: pill shape (999px radius), 15px `--latin-ui`, weight 500, 1.5px border, mi
 - Feature name: 22px brand, weight 500
 - Poetic subtitle: `<small>` below name, 13px olive, italic. One short line evoking the feature's character
 - Description: 15px dark-warm, line-height 1.55
+- Tables stay editorial: no framed box, no tinted header bar, no vertical rules, no empty right gap. Content-sized columns, hairline row rules, a muted `--latin-ui` uppercase header. On phone, `display: block; overflow-x: auto` rather than cramming columns. A framed, tinted table adds weight without adding information.
 
 ### FAQ
 
@@ -1221,6 +1242,7 @@ Both: pill shape (999px radius), 15px `--latin-ui`, weight 500, 1.5px border, mi
 - Mark icon: 56px rounded 8px
 - Links: inline with middot (`&middot;`) separators between items, dark-warm color. Editorial pattern, not flex-gap
 - Ethos: closing italic serif line, olive color, max-width 360px. The italic voice signals a personal sign-off
+- Tech credit, once. If the product builds on an upstream project or framework, credit it exactly once as a quiet footer line, never as a repeated selling point and never in the hero tagline. Grep the whole site for the upstream name and collapse it to this single instance; rewrite the hero around the product's own positioning. Hard facts that are not the credit (license, version) belong here too.
 - Collapses to single column below 880px
 
 ### Cross-lang typography hardening
@@ -1251,6 +1273,26 @@ The landing-page template alone is one HTML file. To deploy a production multili
 The optional Accept-Language redirect at the end of `landing-page-en.html` is commented out by default. Uncomment only after confirming `/zh/`, `/tw/`, `/ja/`, `/ko/` actually resolve on the host.
 
 When a site uses generated locale pages, add a local drift check next to the generator. It should compare generated HTML to committed output, report missing placeholders by key, and fail before package or release work continues.
+
+### Documentation site
+
+When the product site grows docs, help, or guide pages (see «Product site system»), they need a layout the single landing page does not provide. All of this is screen-only.
+
+- Two-column shell: a sticky sidebar nav plus a prose column. Sidebar around 178px, `position: sticky; top: 84px; max-height: calc(100svh - 108px); overflow: auto`. Constrain the prose column to a reading measure (about 720px) even though the page frame is wider; long doc lines hurt readability.
+- Sidebar active state is a rail, not a fill. `border-left: 2px solid transparent` that fills brand on `[aria-current="page"]`, with brand text. No full-width dark underline or background block; that reads as a heavy dark bar against the warm paper.
+- Multi-page topic structure: one file per topic, grouped under sidebar sections. Mark the current page with `aria-current="page"` so the rail and screen readers agree.
+- On-this-page TOC: a thin in-flow list under a hairline top border, with a `--latin-ui` uppercase 11px "On this page" heading and depth-3 entries indented about 12px. Hide it entirely below the tablet breakpoint; it is an aid, not content.
+- Prev/next pager: quiet borderless text links, not bordered cards. A 2-column grid with one thin top divider; each link is a `--latin-ui` uppercase "Previous"/"Next" eyebrow over a brand serif title, `border: 0; background: none`. The next link aligns right (resets left on phone). Press feedback via `:active { opacity: 0.6 }`. A bordered card here reads heavy on mobile.
+- Mobile (tablet breakpoint): the sidebar un-sticks (`position: static`) and collapses to a horizontal scroll strip (`display: flex; overflow-x: auto; scrollbar-width: none`) with the active rail moved to `border-bottom`; the TOC is hidden. Reuse the landing page's existing breakpoints; do not invent a new ladder.
+
+### Responsive screenshot verification
+
+Before declaring any screen change done, screenshot the real rendered surface; a type check or CSS-balance read is not enough. Several regressions (early wraps, orphaned separator dots, table overflow, missed pages) are invisible in source and only show in the render.
+
+- Capture at phone (375px, plus 320px for CTAs) and desktop (1280px), in every shipped locale.
+- Scan for line widows objectively: measure each text block's last-line width against its widest line and flag anything below about 13%. Eyeballing misses pages, and nested `<code>` hides widows from greps. Accept "0 widows" only after the check confirms it.
+- Confirm CTAs reach their natural-width left-aligned resting state with no overflow, code is legible at the reduced mobile font, the gallery and any multi-column grids collapse to a single column, and total page overflow is zero.
+- Long pages do not fit one viewport; use a capture helper that can scroll to a specific element (first code block, pager) before shooting.
 
 ## KO locale tuning
 

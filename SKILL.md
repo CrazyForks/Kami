@@ -104,6 +104,8 @@ If a change touches `SKILL.md`, templates, scripts, references, or package input
 
 > **Production product site mode**: If the user needs docs, help, releases, changelog, roadmap, legal pages, or more than two locales, treat it as a site system. Lock product category, real screenshot slots, locale list, companion files, long-content pages, and generator/check needs before filling templates. Keep project-specific release artifacts, payment providers, appcast rules, and private local paths out of Kami. See `references/design.md` Section 11 «Product site system».
 
+> **Documentation pages**: When a landing page grows into a docs or help site, use the doc shell in `references/design.md` Section 11 «Documentation site»: a sticky sidebar nav with a 2px brand rail (not a dark underline), an on-this-page TOC hidden below the tablet breakpoint, a constrained prose measure, and a quiet borderless prev/next pager (text links, not bordered cards). Highlight code at build time with zero runtime JS on a dark code surface; plain code stays the source of truth.
+
 > Slides: default to `slides-weasy.html` / `slides-weasy-en.html` / `slides-weasy-ko.html` (WeasyPrint HTML → PDF). Use `slides.py` / `slides-en.py` only when the user explicitly requires an editable PPTX file. Use `assets/templates/marp/slides-marp(.md|.css)` only when the user explicitly asks for Marp / markdown slides / a deck that lives in a `.md` file.
 
 > Deck recipe: read design.md Section 8 before drafting slides. Sketch title sequence, evidence shape, and image slot before generating or cropping visuals. Keep audience copy separate from visual briefs. Marp-specific constraints live in design.md §8 «Marp variant».
@@ -457,6 +459,8 @@ python3 scripts/build.py --check-placeholders path/to/filled.html
 python3 scripts/build.py --check-density              # page whitespace scanner (skips cover)
 python3 scripts/build.py --check            # CSS rule violations only (fast, no build)
 ```
+
+> **Screen verify**: `--check-density` is a print gate. For screen output (landing or docs pages) instead screenshot the rendered page at 375px and 1280px in every locale and scan for line widows before shipping. See `references/design.md` Section 11 «Responsive screenshot verification».
 
 Source templates intentionally keep `{{...}}` fields. Run placeholder checks on completed documents, not on the template library.
 
