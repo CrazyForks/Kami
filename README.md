@@ -165,9 +165,9 @@ Later I needed to present "The Agent You Don't Know: Principles, Architecture an
 
 ## Support
 
+- The most direct way to support me is getting [Mole for Mac](https://mole.fit), my paid app that deep cleans and speeds up your Mac.
 - If kami helped you, [share it](https://twitter.com/intent/tweet?url=https://github.com/tw93/kami&text=Kami%20-%20A%20quiet%20design%20system%20for%20professional%20documents.) with friends or give it a star.
 - Got ideas or bugs? Open an issue or PR.
-- You can also support me by getting [Mole for Mac](https://mole.fit), my paid app that deep cleans and speeds up your Mac.
 - I have two cats, TangYuan and Coke. If you think kami delights your life, you can feed them <a href="https://cats.tw93.fun?name=Kami" target="_blank">canned food 🥩</a>.
 
 <details>
