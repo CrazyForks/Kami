@@ -319,23 +319,17 @@ Three tiers from weak to strong visual weight:
 
 ### Lists
 
+Use native list markers, brand-colored: ordered lists carry numbers, unordered lists carry a disc. Do not fake a bullet with a `::before` en-dash; a dash marker reads like AI default output, not editorial typesetting. The `ul.dash` class is an alias for the same native rendering, kept only so existing markup keeps working.
+
 ```css
 ul, ol {
   padding-left: 16pt;
   line-height: 1.55;
 }
 ul li::marker { color: var(--brand); }
-```
-
-Editorial bookish variant - **en-dash instead of bullet**:
-
-```css
-ul.dash { list-style: none; padding-left: 0; }
-ul.dash li { padding-left: 14pt; }
-ul.dash li::before {
-  content: "\2013";
-  color: var(--brand);
-}
+ol li::marker { color: var(--brand); font-weight: 500; }
+ul.dash { padding-left: 16pt; }              /* native disc, no en-dash hack */
+ul.dash li::marker { color: var(--brand); }
 ```
 
 ### Quote
