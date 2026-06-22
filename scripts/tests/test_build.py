@@ -46,12 +46,14 @@ from build import (  # noqa: E402
     scan_file,
 )
 from shared import (  # noqa: E402
+    DIAGRAM_TEMPLATES,
     HTML_TEMPLATES,
     PARCHMENT_RGB,
     ROOT as REPO_ROOT,
     SCREEN_TEMPLATES,
     TEMPLATES,
     build_targets,
+    diagram_targets,
     screen_targets,
 )
 import highlight as highlight_mod  # noqa: E402
@@ -182,6 +184,8 @@ def test_registry_consistency() -> None:
           dict(HTML_TARGETS) == build_targets())
     check("DIAGRAM_TARGETS has 17 entries", len(DIAGRAM_TARGETS) == 17,
           f"got {len(DIAGRAM_TARGETS)}")
+    check("DIAGRAM_TARGETS in build.py matches shared.diagram_targets()",
+          dict(DIAGRAM_TARGETS) == diagram_targets() == dict(DIAGRAM_TEMPLATES))
     check("PPTX_TARGETS has 2 entries", len(PPTX_TARGETS) == 2,
           f"got {len(PPTX_TARGETS)}")
     check("PARCHMENT_RGB is canonical", PARCHMENT_RGB == (0xF5, 0xF4, 0xED))
@@ -899,6 +903,46 @@ def test_mermaid_diagram_templates_normalized() -> None:
         check(f"{name} carries no runtime web-font import", "googleapis" not in text)
 
 
+def test_mermaid_diagrams_match_their_mmd_sources() -> None:
+    """The committed diagram HTML must still carry every node/participant/entity
+    label from its .mmd source. No Node regenerates these, so this guards against
+    a .mmd edit that silently leaves the committed SVG stale."""
+    src_dir = REPO_ROOT / "assets" / "diagrams" / "src"
+    sources = sorted(src_dir.glob("*.mmd"))
+    check("diagram .mmd sources present", len(sources) >= 1, f"found {len(sources)}")
+    for mmd in sources:
+        html_path = REPO_ROOT / "assets" / "diagrams" / f"{mmd.stem}.html"
+        check(f"{mmd.stem}.html exists for {mmd.name}", html_path.exists())
+        if not html_path.exists():
+            continue
+        labels: set[str] = set()
+        for line in mmd.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            m = re.match(r"participant\s+\S+\s+as\s+(.+)", line)
+            if m:
+                labels.add(m.group(1).strip())
+            m = re.match(r"class\s+(\w+)", line)
+            if m:
+                labels.add(m.group(1))
+            labels.update(re.findall(r"\b([A-Z][A-Z_]{2,})\b", line))  # ER entities
+        body = html_path.read_text(encoding="utf-8")
+        missing = sorted(label for label in labels if label not in body)
+        check(f"{mmd.stem}.html carries all {mmd.name} labels",
+              not missing, f"missing labels (regenerate the diagram): {missing}")
+
+
+def test_mermaid_normalize_rejects_non_beautiful_mermaid() -> None:
+    """A non-beautiful-mermaid SVG (no --bg/--fg roles) must raise, not silently
+    emit unresolved colors."""
+    from mermaid_normalize import normalize
+    raised = False
+    try:
+        normalize('<svg xmlns="http://www.w3.org/2000/svg"><rect fill="#000"/></svg>')
+    except ValueError:
+        raised = True
+    check("normalize rejects input lacking --bg/--fg color roles", raised)
+
+
 def main() -> int:
     test_dist_package_contents()
     test_codex_plugin_metadata_generated()
@@ -942,6 +986,8 @@ def main() -> int:
     test_mermaid_normalize_strips_unsafe_features()
     test_mermaid_lint_flags_unnormalized_svg()
     test_mermaid_diagram_templates_normalized()
+    test_mermaid_diagrams_match_their_mmd_sources()
+    test_mermaid_normalize_rejects_non_beautiful_mermaid()
     print()
     print(f"Passed: {_PASS} | Failed: {_FAIL}")
     return 0 if _FAIL == 0 else 1

@@ -45,6 +45,7 @@ from shared import (
     EXAMPLES,
     TEMPLATES,
     build_targets,
+    diagram_targets,
     screen_targets,
 )
 
@@ -89,26 +90,8 @@ PPTX_TARGETS: dict[str, str] = {
 }
 
 # Diagram HTMLs live in a separate directory and have no page-count contract.
-DIAGRAM_TARGETS: dict[str, str] = {
-    "diagram-architecture": "architecture.html",
-    "diagram-flowchart":    "flowchart.html",
-    "diagram-quadrant":     "quadrant.html",
-    "diagram-bar-chart":    "bar-chart.html",
-    "diagram-line-chart":   "line-chart.html",
-    "diagram-donut-chart":  "donut-chart.html",
-    "diagram-state-machine": "state-machine.html",
-    "diagram-timeline":      "timeline.html",
-    "diagram-swimlane":      "swimlane.html",
-    "diagram-tree":          "tree.html",
-    "diagram-layer-stack":   "layer-stack.html",
-    "diagram-venn":          "venn.html",
-    "diagram-candlestick":   "candlestick.html",
-    "diagram-waterfall":     "waterfall.html",
-    # Mermaid-sourced (beautiful-mermaid + scripts/mermaid_normalize.py)
-    "diagram-sequence":      "sequence.html",
-    "diagram-class":         "class.html",
-    "diagram-er":            "er.html",
-}
+# Registry lives in shared.DIAGRAM_TEMPLATES (single home for all template lists).
+DIAGRAM_TARGETS: dict[str, str] = diagram_targets()
 
 
 # ------------------------- build helpers -------------------------

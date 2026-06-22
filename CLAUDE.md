@@ -27,7 +27,7 @@ python3 scripts/mermaid_normalize.py raw.svg -o clean.svg  # beautiful-mermaid S
 - 加新模板：从最近的模板复制，对齐 `references/design.md`，加 demo 覆盖。
 - 不要在 docs / template 注释 / 脚本输出里用图形 emoji。脚本状态用 `OK:` / `ERROR:`。
 - 模板**内联** CSS，不抽公共 partial。修 CSS 漂移时跨模板同步改，不要引入 build-time include。
-- `HTML_TEMPLATES` 注册表在 `scripts/shared.py`，加删模板改这一处，不要分别改 build.py。
+- 所有模板注册表都在 `scripts/shared.py`(`HTML_TEMPLATES` 文档 / `SCREEN_TEMPLATES` 浏览器 / `DIAGRAM_TEMPLATES` 图),build.py 从中派生。加删模板或图改这一处,不要分别改 build.py。
 - 不打包大体积商业字体到 `dist/kami.zip`，但模板要保留稳定的本机预览路径。
 - `dist/kami.zip` 是 tracked release 制品。小修通常刷 latest release 资源即可，不必新 tag。
 - 改 build / packaging 相关代码后，刷新并检查 `dist/kami.zip`；新增 helper/module/reference JSON 后，确认文件已被 Git 跟踪并进入 package。

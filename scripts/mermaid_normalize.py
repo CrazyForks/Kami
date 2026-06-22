@@ -231,7 +231,13 @@ def _collect_raw_defs(svg: str, overrides: dict[str, str]) -> dict[str, str]:
 
 
 def _resolve_functions(text: str, resolver: _Resolver) -> str:
-    """Replace every var()/color-mix() in `text` with a static hex, innermost-first."""
+    """Replace every var()/color-mix() in `text` with a static hex, innermost-first.
+
+    Raises if any function cannot be resolved to a color: in well-formed
+    beautiful-mermaid output every var()/color-mix() resolves, so an unresolved
+    one means the input structure changed. Failing loudly beats silently emitting
+    an invalid color that renders as a black or invisible diagram.
+    """
     while True:
         starts = [m.start() for m in re.finditer(r"\b(?:var|color-mix)\(", text)]
         if not starts:
@@ -240,9 +246,33 @@ def _resolve_functions(text: str, resolver: _Resolver) -> str:
         start = max(starts)
         open_paren = text.index("(", start)
         close = _match_paren(text, open_paren)
-        hexval = resolver.hex_of(text[start:close + 1])
-        text = text[:start] + (hexval or "none") + text[close + 1:]
+        expr = text[start:close + 1]
+        hexval = resolver.hex_of(expr)
+        if hexval is None:
+            raise ValueError(
+                f"could not resolve {expr!r} to a color; the input may not be "
+                "beautiful-mermaid output or uses an unsupported structure"
+            )
+        text = text[:start] + hexval + text[close + 1:]
     return text
+
+
+def _assert_beautiful_mermaid(svg: str) -> None:
+    """Raise unless the SVG carries beautiful-mermaid's root color-role props.
+
+    beautiful-mermaid v1.x defines --bg / --fg (plus the optional roles) as inline
+    custom properties on the root <svg>. Their absence means the input came from a
+    different renderer whose structure this normalizer does not understand, so we
+    fail loudly here instead of silently producing unresolved colors downstream.
+    Verified against beautiful-mermaid v1.1.3; see references/mermaid.md.
+    """
+    m = re.search(r"<svg\b[^>]*\bstyle=\"([^\"]*)\"", svg)
+    style = m.group(1) if m else ""
+    if "--bg" not in style or "--fg" not in style:
+        raise ValueError(
+            "input does not look like beautiful-mermaid output: the root <svg> is "
+            "missing the --bg/--fg color roles (verified against v1.1.3)"
+        )
 
 
 def normalize(svg: str, theme: dict[str, str] | None = None,
@@ -253,6 +283,7 @@ def normalize(svg: str, theme: dict[str, str] | None = None,
         theme = theme or default_colors
         font_stack = font_stack or default_font
 
+    _assert_beautiful_mermaid(svg)
     raw_defs = _collect_raw_defs(svg, theme)
     resolver = _Resolver(raw_defs)
 

@@ -129,6 +129,30 @@ SCREEN_TEMPLATES: dict[str, str] = {
     "landing-page-ko": "landing-page-ko.html",
 }
 
+# Diagram HTMLs live in assets/diagrams and have no page-count contract.
+# Registered here (not in build.py) so all template registries share one home.
+# The Mermaid-sourced ones are produced via scripts/mermaid_normalize.py.
+DIAGRAM_TEMPLATES: dict[str, str] = {
+    "diagram-architecture":  "architecture.html",
+    "diagram-flowchart":     "flowchart.html",
+    "diagram-quadrant":      "quadrant.html",
+    "diagram-bar-chart":     "bar-chart.html",
+    "diagram-line-chart":    "line-chart.html",
+    "diagram-donut-chart":   "donut-chart.html",
+    "diagram-state-machine": "state-machine.html",
+    "diagram-timeline":      "timeline.html",
+    "diagram-swimlane":      "swimlane.html",
+    "diagram-tree":          "tree.html",
+    "diagram-layer-stack":   "layer-stack.html",
+    "diagram-venn":          "venn.html",
+    "diagram-candlestick":   "candlestick.html",
+    "diagram-waterfall":     "waterfall.html",
+    # Mermaid-sourced (beautiful-mermaid + scripts/mermaid_normalize.py)
+    "diagram-sequence":      "sequence.html",
+    "diagram-class":         "class.html",
+    "diagram-er":            "er.html",
+}
+
 
 def build_targets() -> dict[str, tuple[str, int]]:
     """Return target -> (source, max_pages) mapping for build.py."""
@@ -138,6 +162,11 @@ def build_targets() -> dict[str, tuple[str, int]]:
 def screen_targets() -> dict[str, str]:
     """Return target -> source mapping for browser-only HTML templates."""
     return dict(SCREEN_TEMPLATES)
+
+
+def diagram_targets() -> dict[str, str]:
+    """Return target -> source mapping for assets/diagrams HTML templates."""
+    return dict(DIAGRAM_TEMPLATES)
 
 
 @functools.lru_cache(maxsize=1)
