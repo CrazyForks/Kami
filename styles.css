@@ -36,13 +36,13 @@
     /* Slide-scale spacing */
     --slide-pad:    80px;
 
-    --serif: Charter, Georgia, "TsangerJinKai02", "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", Palatino, serif;
+    --serif: Charter, Georgia, "TsangerJinKai02", "Source Han Serif SC", "Source Han Serif CN", "Noto Serif CJK SC", "Noto Serif SC", "Songti SC", Palatino, serif;
     --sans: var(--serif);
     --mono: "JetBrains Mono", "Fira Code", "SF Mono", Consolas, Monaco, monospace;
   }
 
   html[lang="zh-CN"] {
-    --serif: "TsangerJinKai02", "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", Georgia, serif;
+    --serif: "TsangerJinKai02", "Source Han Serif SC", "Source Han Serif CN", "Noto Serif CJK SC", "Noto Serif SC", "Songti SC", Georgia, serif;
     --sans: var(--serif);
   }
 
