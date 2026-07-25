@@ -1377,18 +1377,9 @@ Data dashboards built in the Kami idiom (analytics boards, sales views, status p
 
 Mermaid text is turned into Kami-styled diagrams via beautiful-mermaid plus
 `scripts/mermaid_normalize.py`. The theme maps beautiful-mermaid's seven color
-roles onto the canonical palette (single source: `references/mermaid-theme.json`,
-kept in sync with `tokens.json`):
-
-| role | token | hex |
-|------|-------|-----|
-| `bg` | `--parchment` | `#f5f4ed` |
-| `fg` | `--near-black` | `#141413` |
-| `line` | `--olive` | `#504e49` |
-| `accent` | `--brand` | `#1B365D` |
-| `muted` | `--stone` | `#6b6a64` |
-| `surface` | `--ivory` | `#faf9f5` |
-| `border` | `--border` | `#e8e6dc` |
+roles onto the canonical palette. `references/mermaid-theme.json` is the single
+source, kept in sync with `tokens.json`; `references/mermaid.md` «The Kami theme»
+prints the role-to-token mapping in readable form.
 
 Same invariants as every other surface: parchment canvas, one chromatic accent
 (ink-blue marks the focal element only), warm neutrals for everything else, serif
