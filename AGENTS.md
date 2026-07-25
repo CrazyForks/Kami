@@ -287,6 +287,11 @@ maintenance side only.
 - Script changes: `python3 scripts/tests/test_build.py` and
   `python3 scripts/build.py --check`. Run full `--verify` only when the render
   pipeline itself changed (`render.py`, `verify.py`, WeasyPrint handling).
+- Font-stack changes (any `--serif` / `--mono` / SVG `text` chain): rebuild the
+  examples, then `python3 scripts/build.py --check-fonts assets/examples/*.pdf`. The
+  page-count contract cannot see which family actually drew the text, and a wrong one
+  renders cleanly; this is how the diagram labels were found splitting mid-word across
+  two faces.
 - Demo changes: regenerate the affected demo outputs and confirm page counts stay in
   range. Font issues: `bash scripts/ensure-fonts.sh`, then rebuild the target.
 - MCP server changes: smoke the stdio protocol end to end (initialize, tools/list, one
@@ -311,6 +316,15 @@ drift out of it:
 - `Source Han Serif KR` is the real family name inside the bundled OTFs and must stay
   in every Korean fallback chain, otherwise fontconfig cannot resolve the
   `ensure-fonts.sh`-downloaded font by name on an offline Linux skill install.
+- CJK families lead every stack that CJK text can reach, Latin faces trail. A leading
+  Latin serif ends the stack walk for characters it lacks, which sends each ideograph
+  to fontconfig separately and splits words across two faces inside inline SVG
+  (`production.md` pitfall #4.1). The `-en` templates are the deliberate exception:
+  they are Latin documents, so `Charter` stays first there.
+- The commercial TsangerJinKai02 files never ship inside the skill package, so a
+  sandboxed install has no primary CJK serif and falls through the chain. Keep the
+  chain wide (Source Han Serif SC and CN, Noto Serif CJK SC and SC, Songti SC, STSong,
+  SimSun) so it lands on some serif rather than a system sans.
 - `bash scripts/ensure-fonts.sh` downloads into the XDG user font dir
   (`${XDG_DATA_HOME:-~/.local/share}/fonts/kami`, override with `KAMI_FONT_DIR`),
   never into the skill's `assets/fonts`, so an installed Claude Desktop skill stays
