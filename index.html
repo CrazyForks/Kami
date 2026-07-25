@@ -18,6 +18,7 @@
   <link rel="icon" href="assets/images/logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./styles.css">
   <link rel="canonical" href="https://kami.tw93.fun/">
+  <link rel="alternate" type="text/markdown" href="https://kami.tw93.fun/index.md">
   <link rel="alternate" hreflang="en" href="https://kami.tw93.fun/">
   <link rel="alternate" hreflang="zh-CN" href="https://kami.tw93.fun/index-zh.html">
   <link rel="alternate" hreflang="ja" href="https://kami.tw93.fun/index-ja.html">
@@ -40,6 +41,7 @@
   {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
+    "@id": "https://kami.tw93.fun/#kami",
     "name": "Kami",
     "description": "A warm parchment design system for AI-assisted professional documents. One accent color, serif-led hierarchy, and editorial whitespace.",
     "url": "https://kami.tw93.fun",
@@ -50,6 +52,13 @@
       "name": "Tw93",
       "url": "https://tw93.fun",
       "sameAs": ["https://github.com/tw93", "https://twitter.com/HiTw93", "https://tw93.fun", "https://weekly.tw93.fun", "https://yobi.tw93.fun"]
+    },
+    "sameAs": [
+      "https://github.com/tw93/kami",
+      "https://kami.tw93.fun/"
+    ],
+    "publisher": {
+      "@id": "https://kami.tw93.fun/#organization"
     },
     "offers": {
       "@type": "Offer",
@@ -93,6 +102,78 @@
         "acceptedAnswer": {
           "@type": "Answer",
           "text": "English, Chinese, Japanese, and Korean. Each uses a dedicated serif font: Charter, TsangerJinKai02, YuMincho, and Source Han Serif K respectively, with per-language typographic tuning."
+        }
+      }
+    ]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "@id": "https://kami.tw93.fun/#organization",
+    "name": "Kami",
+    "alternateName": "Kami 紙",
+    "url": "https://kami.tw93.fun/",
+    "logo": "https://kami.tw93.fun/assets/images/logo.svg",
+    "image": "https://kami.tw93.fun/assets/showcase/kami-landing.png",
+    "description": "Open-source document design system for AI agents, maintained by Tw93 under the MIT license.",
+    "email": "hitw93@gmail.com",
+    "founder": {
+      "@type": "Person",
+      "name": "Tw93",
+      "url": "https://tw93.fun"
+    },
+    "sameAs": [
+      "https://github.com/tw93/kami",
+      "https://github.com/tw93",
+      "https://x.com/HiTw93",
+      "https://twitter.com/HiTw93",
+      "https://tw93.fun"
+    ],
+    "contactPoint": [
+      {
+        "@type": "ContactPoint",
+        "contactType": "technical support",
+        "url": "https://github.com/tw93/kami/issues",
+        "email": "hitw93@gmail.com",
+        "availableLanguage": ["en", "zh-CN"]
+      },
+      {
+        "@type": "ContactPoint",
+        "contactType": "customer support",
+        "url": "https://kami.tw93.fun/contact",
+        "email": "hitw93@gmail.com",
+        "availableLanguage": ["en", "zh-CN"]
+      }
+    ]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://kami.tw93.fun/#website",
+        "url": "https://kami.tw93.fun/",
+        "name": "Kami",
+        "description": "A warm parchment design system for AI-assisted professional documents.",
+        "publisher": { "@id": "https://kami.tw93.fun/#organization" },
+        "inLanguage": ["en", "zh-CN", "zh-Hant", "ja", "ko"]
+      },
+      {
+        "@type": "WebPage",
+        "@id": "https://kami.tw93.fun/#webpage",
+        "url": "https://kami.tw93.fun/",
+        "name": "Kami: Document Design System for AI Agents",
+        "isPartOf": { "@id": "https://kami.tw93.fun/#website" },
+        "about": { "@id": "https://kami.tw93.fun/#kami" },
+        "primaryImageOfPage": "https://kami.tw93.fun/assets/showcase/kami-landing.png",
+        "inLanguage": "en",
+        "speakable": {
+          "@type": "SpeakableSpecification",
+          "cssSelector": [".hero h1", ".hero .tagline", ".manifesto"]
         }
       }
     ]
@@ -686,7 +767,8 @@ beauty   = constraints × <span class="k">intention</span> ÷ noise</pre>
       </div>
     </div>
     <div class="colophon">
-      <div><a href="https://github.com/tw93/kami" style="color:var(--brand); text-decoration:none; font-weight:500;">GitHub</a>&nbsp;&nbsp;·&nbsp;&nbsp;One-Pager · Long Doc · Letter · Portfolio · Resume · Slides</div>
+      <div><a href="./developers" style="color:var(--brand); text-decoration:none; font-weight:500;">Developers</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="./about" style="color:var(--brand); text-decoration:none; font-weight:500;">About</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="./contact" style="color:var(--brand); text-decoration:none; font-weight:500;">Contact</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="./privacy" style="color:var(--brand); text-decoration:none; font-weight:500;">Privacy</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="https://github.com/tw93/kami" style="color:var(--brand); text-decoration:none; font-weight:500;">GitHub</a></div>
+      <div style="margin-top:6px;">One-Pager · Long Doc · Letter · Portfolio · Resume · Slides</div>
       <div style="margin-top:8px; color: var(--olive); font-family: var(--serif);">
         Serif carries authority, sans function, warm grays rhythm, ink blue focus.
       </div>

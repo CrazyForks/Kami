@@ -53,10 +53,20 @@ Only the entries whose role is not obvious from the filename:
 - `dist/kami.zip` - **tracked** release archive, committed with release changes.
 - `plugins/kami/`, `.claude-plugin/marketplace.json`, and
   `.agents/plugins/marketplace.json` are **generated**; see Generated Mirrors below.
-- Public site surface: `index.html` plus `index-zh|en|ja|ko|tw.html`, `styles.css`,
-  `llms.txt`, `robots.txt`, `sitemap.xml`, `vercel.json`. `styles.css` is Kami's own
-  site shell (language switcher, gallery, responsive behavior); generic template rules
-  never belong there.
+- Public site surface: `index.html` plus `index-zh|en|ja|ko|tw.html`, the English-only
+  prose pages `developers|about|contact|privacy.html`, `styles.css`, `llms.txt`,
+  `robots.txt`, `sitemap.xml`, `vercel.json`. `styles.css` is Kami's own site shell
+  (language switcher, gallery, responsive behavior, `.hero.doc` / `.prose` for the
+  prose pages); generic template rules never belong there.
+- Agent-facing site surface: `index.md` (Markdown twin of the homepage; `vercel.json`
+  *redirects* `/` here for `Accept: text/markdown` and `/?mode=agent`, because Vercel
+  applies `rewrites` only after the filesystem and `/` always matches `index.html`),
+  `developers|about|contact|privacy.md`, `developers/llms.txt`, and the generated
+  `.well-known/agent-skills/index.json`, `.well-known/mcp/server-card.json`,
+  `feeds/catalog.jsonld`, `schemamap.xml`. Every new prose page needs its `.md` twin,
+  a `rewrites` entry for the extensionless URL, and a `sitemap.xml` row.
+  The `has`-conditioned redirects and the `Link` headers are only observable on a
+  deploy: verify them with `curl -sI` against the preview URL, never locally.
 - `.github/workflows/check.yml` (PR/push CI) and `release.yml` (tag-triggered build
   and asset upload).
 
@@ -154,6 +164,13 @@ are generated from the root sources. Edit the root file only, treat every
 `python3 scripts/build_metadata.py --check` catch drift. Regenerate after changing
 `SKILL.md`, `CHEATSHEET.md`, `VERSION`, `references/`, `scripts/`, or shipped
 lightweight assets.
+
+The same generator owns the site's machine-readable discovery files:
+`.well-known/agent-skills/index.json` (carries a SHA-256 digest of `SKILL.md`, so any
+skill edit changes it), `.well-known/mcp/server-card.json` (version plus the tool list
+parsed out of `scripts/mcp_server.py` without importing it), `feeds/catalog.jsonld`
+(built from `HTML_TEMPLATES` / `DIAGRAM_TEMPLATES`), and `schemamap.xml`. Never
+hand-edit these four; change the source and regenerate.
 
 Marketplace, plugin path, version, or install-path changes need runtime installation
 proof, not metadata proof. Claude Code: an isolated `HOME=/tmp/...` smoke with
