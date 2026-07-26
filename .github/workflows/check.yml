@@ -77,3 +77,10 @@ jobs:
           python3 scripts/build.py --verify resume
           python3 scripts/build.py --verify resume-en
           python3 scripts/build.py --verify resume-ko
+
+      - name: Check which family actually drew the CJK text
+        # Page counts cannot see the typeface. With fonts-noto-cjk installed
+        # this reports a serif fallback and passes; it fails if the CJK body
+        # ever lands on a sans or gets split across two families, which is how
+        # a broken font install would otherwise ship looking merely "fine".
+        run: python3 scripts/build.py --check-fonts assets/examples/one-pager.pdf assets/examples/one-pager-ko.pdf assets/examples/resume.pdf

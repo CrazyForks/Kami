@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import builtins
+import hashlib
 import importlib.util
 import inspect
 import io
@@ -235,6 +236,31 @@ def test_dist_package_contents() -> None:
     check("dist/kami.zip keeps required runtime skill files",
           not missing_required,
           f"missing entries: {', '.join(missing_required)}")
+
+    # Structure alone cannot tell a current package from a stale one. The
+    # plugin mirror has `build_metadata.py --check`; the ZIP had no equivalent,
+    # so editing a source file and forgetting `package-skill.sh` left every
+    # check green while the archive Claude Desktop users download stayed on the
+    # old content. Compare what is inside against what it was built from.
+    stale: list[str] = []
+    absent: list[str] = []
+    with zipfile.ZipFile(archive) as zf:
+        for name in zf.namelist():
+            if name.endswith("/"):
+                continue
+            source = REPO_ROOT / name.removeprefix(f"{PACKAGE_ROOT_NAME}/")
+            if not source.exists():
+                absent.append(name)
+                continue
+            if hashlib.sha256(zf.read(name)).digest() != hashlib.sha256(source.read_bytes()).digest():
+                stale.append(name)
+    check("dist/kami.zip matches the sources it was built from",
+          not stale,
+          f"{len(stale)} stale entr(ies): {', '.join(sorted(stale)[:5])}"
+          " -- run `bash scripts/package-skill.sh`")
+    check("dist/kami.zip carries no entry missing from the repo",
+          not absent,
+          f"entries with no source: {', '.join(sorted(absent)[:5])}")
 
 
 def test_plugin_metadata_generated() -> None:
