@@ -37,6 +37,20 @@ screenshots. Everyday template, script, and site work does not need it.
 - README and public site download links point at
   `https://github.com/tw93/kami/releases/latest/download/kami.zip`. For small packaging
   or documentation fixes, refresh that asset instead of cutting a new tag.
+- Confirm remote CI is green on the exact commit about to be tagged, and read the
+  `headSha` back rather than trusting the newest row:
+
+  ```bash
+  gh run list --workflow=check.yml --limit 1 --json headSha,status,conclusion
+  ```
+
+  A full local pass is not the verdict. V1.11.0 shipped while CI had been red for
+  seven consecutive runs, because a test read `assets/examples/one-pager.pdf`, which
+  is gitignored build output: it passed on any machine that had run a build and
+  failed on every fresh checkout. Local green means "my working copy is fine", CI
+  green means "a clean checkout is fine", and only the second one is what a user
+  downloads. Poll the structured status; piping `gh run watch` into `tail` swallows
+  the exit code and reports an unfinished or failed run as passing.
 - Create a version tag only when the maintainer explicitly asks for a versioned
   release, and tag the commit that already contains the final refreshed
   `dist/kami.zip`. Never tag a source-only commit and refresh the archive afterward.
