@@ -18,8 +18,8 @@ Only the entries whose role is not obvious from the filename:
   `production.md` Part 4 is the single source of truth for render failures, their
   verified causes, and their fixes; add pitfalls there, not here.
   `docs/release.md` - release notes, release flow, demo screenshot regeneration.
-  `anti-patterns.md`, `resume-writing.md`, `mermaid.md`, `brand-profile.md` and
-  `brand.example.md` - scoped guides.
+  `anti-patterns.md`, `resume-writing.md`, `mermaid.md`, `deck-preflight.md`,
+  `brand-profile.md` and `brand.example.md` - scoped guides.
 - `references/tokens.json` (color tokens, drift-checked by `scripts/tokens.py`),
   `references/mermaid-theme.json` (Kami to beautiful-mermaid theme, kept in sync with
   `tokens.json`), `references/checks_thresholds.json` (rhythm / density / orphan /
@@ -136,8 +136,6 @@ python3 scripts/tests/test_build.py          # zero-dependency test suite
   `grep -rn "$(printf '\342\200\224')" README.md llms.txt index*.html`. Teaching
   counter-examples inside `references/anti-patterns.md` are exempt; its rule #28
   covers the generated-document side.
-- No graphic emoji in repository docs, template comments, or script output. Script
-  status lines use `OK:` and `ERROR:`.
 - For hosted-site or public-landing work, separate generic template work from Kami's
   own website first. Generic behavior lives in `assets/templates/landing-page*` and
   `references/`; Kami site facts live across `index*.html`, `styles.css`, `README.md`,
@@ -146,11 +144,11 @@ python3 scripts/tests/test_build.py          # zero-dependency test suite
   positioning claims move together across pages, metadata, AI files, and download
   links. Do not leave a site-only analytics or tracking change contradicting the
   "no analytics" copy elsewhere.
-- Landing or documentation-site work follows `references/design.md` Section 11
-  «Documentation site» for the doc shell (sidebar rail, on-this-page TOC, borderless
-  prev/next pager, build-time zero-JS code highlighting), then Section 12 «Responsive
-  screenshot verification» (screenshot at 375px / 1280px per locale, objective
-  line-widow scan) before shipping.
+- Landing or documentation-site work follows `references/design.md` Section 11 «Landing
+  Page (screen-first)»: its «Documentation site» subsection for the doc shell (sidebar
+  rail, on-this-page TOC, borderless prev/next pager), then «Responsive screenshot
+  verification» (screenshot at 375px / 1280px per locale, objective line-widow scan)
+  before shipping.
 - Content changes should avoid CSS churn unless layout behavior is part of the task.
 - Brand profile support is optional context. Keep public examples in `references/`; do
   not hard-code a maintainer's private local profile.
