@@ -58,7 +58,10 @@ jobs:
             fonts-noto-cjk fonts-noto-cjk-extra
 
       - name: Install Python deps
-        run: python3 -m pip install weasyprint pypdf Pygments
+        # pymupdf backs --check-fonts (it reads the text spans of a rendered PDF);
+        # without it that step exits 2 on a missing dependency rather than judging
+        # the fonts.
+        run: python3 -m pip install weasyprint pypdf pymupdf Pygments
 
       - name: Verify strict page-count targets
         # Only the six hard-invariant templates (resume == 2, one-pager == 1
