@@ -95,6 +95,14 @@ python3 scripts/tests/test_build.py          # zero-dependency test suite
 ## Working Rules
 
 - Style changes must update `references/design.md` and the matching template tokens.
+- A CSS snippet in a reference doc is a shipped artifact, not prose: an agent copies
+  it before it reads a template. Every fenced `css` / `html` block is scanned by
+  `--check-docs` (inside `--check`) with the template rule set, and every `var()` it
+  names must resolve to a registered token or one a shipped template defines. Teach
+  from a component a template actually has; a recipe for assembling a new container
+  is how a document ends up carrying three unrelated emphasis languages. Tag a
+  deliberate counter-example inline with `/* avoid */` so the scan reads it as the
+  lesson rather than the violation.
 - A change touching template tokens, shared CSS gestures, or `references/design.md`
   visual rules must rebuild the affected demo outputs (`assets/demos/*.pdf` / `*.png`)
   in the same change, not as a later cleanup. Demos inline their CSS by copy, so they
