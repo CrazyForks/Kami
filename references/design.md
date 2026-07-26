@@ -269,6 +269,24 @@ Print radius: 2pt for chips, 4pt for blocks (cards, code, tables). Larger steps
 own scale; on a printed page they read as a web component dropped into a
 document.
 
+### The brand left rule
+
+One gesture, three weights. The weight tracks what the rule is doing, not the
+size of the type next to it (the 2.5pt tier spans 10pt to 32pt headings):
+
+| Weight | Role | Where it ships |
+|---|---|---|
+| 2.5pt | Structural divide: a heading that opens a section or document | `changelog` `h2`, `long-doc` `h1` / `.toc h2`, `letter` `.subject`, `portfolio` titles |
+| 2pt | Aside: a passage lifted out of the reading flow | `.callout` and `.quote` across one-pager, long-doc, equity-report |
+| 1.4pt | Edge of a filled block, where the fill already carries the weight | `equity-report` `.analyst-box`, `long-doc` `.exec-summary` |
+
+Pick the tier by role, then leave the number alone. A fourth value is not a new
+idea, it is drift: the same `.callout` sitting at two widths is what teaches a
+reader of these templates that the number is theirs to choose. Most documents
+need only the 2pt tier; the structural weight is for templates that are scanned
+for boundaries rather than read straight through, and heads in a normal document
+carry their hierarchy through type alone.
+
 ### Buttons
 
 ```css

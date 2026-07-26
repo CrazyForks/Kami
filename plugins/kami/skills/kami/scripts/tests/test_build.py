@@ -560,6 +560,28 @@ def test_font_fallback_markers_recognize_pt_serif() -> None:
           f"markers: {RECOGNIZABLE_FALLBACK_FONT_MARKERS}")
 
 
+def test_brand_left_rule_uses_one_of_three_weights() -> None:
+    """The brand left rule is one gesture at three weights, picked by role.
+
+    design.md «The brand left rule» assigns 2.5pt to a structural divide, 2pt
+    to an aside, and 1.4pt to the edge of a filled block. A fourth value is not
+    a new idea, it is drift: the same `.callout` shipping at 1.8pt in one-pager
+    and 2pt in long-doc is what teaches a reader of these templates that the
+    number is theirs to pick, and inventing rules is exactly the drift the
+    generated documents show.
+    """
+    allowed = {"2.5", "2", "1.4"}
+    pattern = re.compile(r"border-left:\s*([\d.]+)pt solid var\(--brand\)")
+    offenders: list[str] = []
+    for path in sorted(TEMPLATES.glob("*.html")):
+        for weight in pattern.findall(path.read_text(encoding="utf-8")):
+            if weight not in allowed:
+                offenders.append(f"{path.name}: {weight}pt")
+    check("brand left rule uses one of the three registered weights",
+          not offenders,
+          f"offenders: {', '.join(offenders)}")
+
+
 def test_documented_snippets_answer_to_template_rules() -> None:
     """A doc snippet is copied more readily than a template is read.
 
