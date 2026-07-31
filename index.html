@@ -680,37 +680,33 @@ beauty   = constraints × <span class="k">intention</span> ÷ noise</pre>
     </div>
 
     <div class="anti">
-      <div class="no">
-        <h3>Don't</h3>
-        <p>Use <code>#ffffff</code> pure white or <code>#f3f4f6</code> cool gray as page background. It makes the page feel brittle and weakens the warm parchment character.</p>
+      <div class="anti-row">
+        <p class="anti-topic">Page canvas</p>
+        <div class="anti-pair">
+          <p class="anti-line never"><span class="cue">Never</span><span>Pure white <code>#ffffff</code> or cool gray <code>#f3f4f6</code> as page background. It makes the page feel brittle and weakens the warm parchment character.</span></p>
+          <p class="anti-line instead"><span class="cue">Instead</span><span>Always <code>#f5f4ed</code> parchment, with <code>@page background</code> set to the same color to avoid white edges when printing.</span></p>
+        </div>
       </div>
-      <div class="yes">
-        <h3>Do</h3>
-        <p>Always use <code>#f5f4ed</code> parchment. Set <code>@page background</code> to the same color to avoid white edges when printing.</p>
+      <div class="anti-row">
+        <p class="anti-topic">Tag tints</p>
+        <div class="anti-pair">
+          <p class="anti-line never"><span class="cue">Never</span><span><code>rgba(27,54,93,0.18)</code> for tags. WeasyPrint renders padding and glyph areas at different opacity, creating double rectangles.</span></p>
+          <p class="anti-line instead"><span class="cue">Instead</span><span>The tint lookup table's equivalent solid hex <code>#E4ECF5</code>. The rendering stays clean and the color remains stable.</span></p>
+        </div>
       </div>
-      <div class="no">
-        <h3>Don't</h3>
-        <p>Use <code>rgba(27,54,93,0.18)</code> for tags. WeasyPrint renders padding and glyph areas at different opacity, creating double rectangles.</p>
+      <div class="anti-row">
+        <p class="anti-topic">Synthetic bold</p>
+        <div class="anti-pair">
+          <p class="anti-line never"><span class="cue">Never</span><span>Headlines at <code>font-weight: 600</code> or heavier synthetic bold. It blurs strokes and degrades typographic quality.</span></p>
+          <p class="anti-line instead"><span class="cue">Instead</span><span>Body 400, headings 500 (real W05). For more presence, use size or a brand left bar, never synthetic bold.</span></p>
+        </div>
       </div>
-      <div class="yes">
-        <h3>Do</h3>
-        <p>Use the tint lookup table for equivalent solid hex <code>#E4ECF5</code>. The rendering stays clean and the color remains stable.</p>
-      </div>
-      <div class="no">
-        <h3>Don't</h3>
-        <p>Set headlines to <code>font-weight: 600</code> or heavier synthetic bold. Synthetic bold blurs strokes and degrades typographic quality.</p>
-      </div>
-      <div class="yes">
-        <h3>Do</h3>
-        <p>Body 400, headings 500 (real W05). For more presence, use size or a brand left bar, never synthetic bold.</p>
-      </div>
-      <div class="no">
-        <h3>Don't</h3>
-        <p>Use hard drop shadow <code>0 2px 8px rgba(0,0,0,0.3)</code>. Visually heavy and likely to print as dark blobs.</p>
-      </div>
-      <div class="yes">
-        <h3>Do</h3>
-        <p>Ring shadow <code>0 0 0 1pt</code> or whisper <code>rgba 0.05</code>, or simply alternate light and dark sections.</p>
+      <div class="anti-row">
+        <p class="anti-topic">Shadows</p>
+        <div class="anti-pair">
+          <p class="anti-line never"><span class="cue">Never</span><span>Hard drop shadow <code>0 2px 8px rgba(0,0,0,0.3)</code>. Visually heavy and likely to print as dark blobs.</span></p>
+          <p class="anti-line instead"><span class="cue">Instead</span><span>Ring shadow <code>0 0 0 1pt</code> or whisper <code>rgba 0.05</code>, or simply alternate light and dark sections.</span></p>
+        </div>
       </div>
     </div>
   </section>

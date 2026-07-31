@@ -669,37 +669,33 @@ beauty   = constraints × <span class="k">intention</span> ÷ noise</pre>
     </div>
 
     <div class="anti">
-      <div class="no">
-        <h3>하지 마세요</h3>
-        <p><code>#ffffff</code> 순백이나 <code>#f3f4f6</code> 쿨 그레이를 페이지 배경으로 사용하지 마세요. 페이지가 딱딱해지고 따뜻한 양피지 특성이 약해집니다.</p>
+      <div class="anti-row">
+        <p class="anti-topic">페이지 배경</p>
+        <div class="anti-pair">
+          <p class="anti-line never"><span class="cue">지양</span><span><code>#ffffff</code> 순백이나 <code>#f3f4f6</code> 쿨 그레이 배경. 페이지가 딱딱해지고 따뜻한 양피지 특성이 약해집니다.</span></p>
+          <p class="anti-line instead"><span class="cue">권장</span><span>항상 <code>#f5f4ed</code> 양피지. 인쇄 시 흰 테두리를 막기 위해 <code>@page background</code>도 같은 색으로 설정합니다.</span></p>
+        </div>
       </div>
-      <div class="yes">
-        <h3>하세요</h3>
-        <p>항상 <code>#f5f4ed</code> 양피지를 사용하세요. 인쇄 시 흰 테두리를 방지하기 위해 <code>@page background</code>도 같은 색상으로 설정하세요.</p>
+      <div class="anti-row">
+        <p class="anti-topic">태그 색상</p>
+        <div class="anti-pair">
+          <p class="anti-line never"><span class="cue">지양</span><span>태그의 <code>rgba(27,54,93,0.18)</code>. WeasyPrint는 패딩과 글리프 영역을 다른 불투명도로 렌더링하여 이중 사각형을 만듭니다.</span></p>
+          <p class="anti-line instead"><span class="cue">권장</span><span>틴트 조회 표의 등가 솔리드 hex <code>#E4ECF5</code>. 렌더링이 깔끔하게 유지되고 색상이 안정적입니다.</span></p>
+        </div>
       </div>
-      <div class="no">
-        <h3>하지 마세요</h3>
-        <p>태그에 <code>rgba(27,54,93,0.18)</code>를 사용하지 마세요. WeasyPrint는 패딩과 글리프 영역을 다른 불투명도로 렌더링하여 이중 사각형을 만듭니다.</p>
+      <div class="anti-row">
+        <p class="anti-topic">합성 볼드</p>
+        <div class="anti-pair">
+          <p class="anti-line never"><span class="cue">지양</span><span><code>font-weight: 600</code> 이상의 합성 볼드 제목. 획이 흐려지고 타이포그래피 품질이 떨어집니다.</span></p>
+          <p class="anti-line instead"><span class="cue">권장</span><span>본문 400, 제목 500 (실제 W05). 더 강한 존재감이 필요하면 크기나 brand 좌측 바를 사용합니다.</span></p>
+        </div>
       </div>
-      <div class="yes">
-        <h3>하세요</h3>
-        <p>등가 솔리드 hex <code>#E4ECF5</code>를 위한 틴트 조회 표를 사용하세요. 렌더링이 깔끔하게 유지되고 색상이 안정적입니다.</p>
-      </div>
-      <div class="no">
-        <h3>하지 마세요</h3>
-        <p>제목을 <code>font-weight: 600</code> 이상의 합성 볼드로 설정하지 마세요. 합성 볼드는 획을 흐리게 하고 타이포그래피 품질을 떨어뜨립니다.</p>
-      </div>
-      <div class="yes">
-        <h3>하세요</h3>
-        <p>본문 400, 제목 500 (실제 W05). 더 강한 존재감이 필요하면 크기나 brand 좌측 바를 사용하고, 합성 볼드는 절대 사용하지 마세요.</p>
-      </div>
-      <div class="no">
-        <h3>하지 마세요</h3>
-        <p>하드 드롭 섀도우 <code>0 2px 8px rgba(0,0,0,0.3)</code>을 사용하지 마세요. 시각적으로 무겁고 인쇄 시 어두운 얼룩으로 나타날 수 있습니다.</p>
-      </div>
-      <div class="yes">
-        <h3>하세요</h3>
-        <p>링 섀도우 <code>0 0 0 1pt</code> 또는 위스퍼 <code>rgba 0.05</code>, 아니면 단순히 밝고 어두운 섹션을 교차시키세요.</p>
+      <div class="anti-row">
+        <p class="anti-topic">섀도우</p>
+        <div class="anti-pair">
+          <p class="anti-line never"><span class="cue">지양</span><span>하드 드롭 섀도우 <code>0 2px 8px rgba(0,0,0,0.3)</code>. 시각적으로 무겁고 인쇄 시 어두운 얼룩으로 나타납니다.</span></p>
+          <p class="anti-line instead"><span class="cue">권장</span><span>링 섀도우 <code>0 0 0 1pt</code> 또는 위스퍼 <code>rgba 0.05</code>, 아니면 밝고 어두운 섹션을 교차시킵니다.</span></p>
+        </div>
       </div>
     </div>
   </section>
