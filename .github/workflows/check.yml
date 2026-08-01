@@ -27,9 +27,6 @@ jobs:
       - name: Check generated Codex plugin metadata
         run: python3 scripts/build_metadata.py --check
 
-      - name: Run test suite
-        run: python3 scripts/tests/test_build.py
-
       - name: Build and audit skill package
         run: bash scripts/package-skill.sh /tmp/kami-ci.zip
 
@@ -62,6 +59,9 @@ jobs:
         # without it that step exits 2 on a missing dependency rather than judging
         # the fonts.
         run: python3 -m pip install weasyprint pypdf pymupdf Pygments
+
+      - name: Run full test suite with render dependencies
+        run: python3 scripts/tests/test_build.py
 
       - name: Verify strict page-count targets
         # Only the six hard-invariant templates (resume == 2, one-pager == 1

@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="How agents and developers integrate Kami: the local MCP server, content schemas, deterministic checks, and every machine-readable file this site publishes.">
   <link rel="icon" href="assets/images/logo.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./styles.css?v=1.11.0">
   <link rel="canonical" href="https://kami.tw93.fun/developers">
   <link rel="alternate" type="text/markdown" href="https://kami.tw93.fun/developers.md">
   <meta property="og:type" content="website">
@@ -75,7 +75,7 @@
       <h2 class="section-title">Get the skill</h2>
       <p class="section-lede">The skill auto-triggers on document requests. No slash command is needed once it is installed.</p>
     </div>
-<pre class="code"><span class="c"># Claude Code (v2.1.142+)</span>
+<pre class="code code-wrap"><span class="c"># Claude Code (v2.1.142+)</span>
 /plugin marketplace add tw93/kami
 /plugin install kami@kami
 
@@ -99,9 +99,10 @@ claude mcp add kami -- python3 &lt;checkout&gt;/scripts/mcp_server.py</pre>
     </div>
     <ul>
       <li><code>kami_templates</code> - list document templates, browser-only templates, the diagram library, and content schema types, with the reference docs to read before filling.</li>
+      <li><code>kami_doctor</code> - report installed PDF render, visual-check, editable-PPTX, and font capabilities without treating an unavailable engine as a clean result.</li>
       <li><code>kami_render</code> - render trusted local Kami HTML to PDF through WeasyPrint, with build-time code highlighting. Returns the PDF path and page count.</li>
-      <li><code>kami_check</code> - run the deterministic checks for a file. HTML: placeholders and markdown residue, plus content coverage when a content IR JSON is supplied. PDF: markdown residue, orphans, density. JSON: content IR schema validation.</li>
-      <li><code>kami_screenshot</code> - rasterize every PDF page to PNG and return the paths plus a fixed review checklist for the perceptual pass.</li>
+      <li><code>kami_check</code> - run the deterministic checks for a file. Returns the readable report plus stable rule IDs, findings, engine coverage, and explicit degraded checks.</li>
+      <li><code>kami_screenshot</code> - rasterize every PDF page to PNG and return the paths, deterministic CJK font verdict, and a <code>review_pending</code> checklist contract for the perceptual pass.</li>
     </ul>
     <p>The server speaks newline-delimited JSON-RPC 2.0 on stdin and stdout and has no third-party dependency for the protocol itself. Tools that need WeasyPrint, pypdf, or PyMuPDF surface the install hint as a tool error instead of crashing. Its card, including the protocol version and the tool list, is published at <a href="./.well-known/mcp/server-card.json">/.well-known/mcp/server-card.json</a>.</p>
   </section>
@@ -112,8 +113,8 @@ claude mcp add kami -- python3 &lt;checkout&gt;/scripts/mcp_server.py</pre>
       <h2 class="section-title">Content schemas</h2>
       <p class="section-lede">Each document type has a JSON schema that states its structure and its quality bar. Fill the schema first, lay out second.</p>
     </div>
-    <p>Nine schemas live under <code>references/schemas/</code>: changelog, equity-report, landing-page, letter, long-doc, one-pager, portfolio, resume, slides. Validate the content object before layout, then check how much of it actually reached the page:</p>
-<pre class="code">python3 scripts/build.py --check-content content.json
+    <p>Nine schemas live under <code>references/schemas/</code>: changelog, equity-report, landing-page, letter, long-doc, one-pager, portfolio, resume, slides. A new <code>content.json</code> also carries a <code>brief</code> with audience, job, output contract, target, preserve boundary, evidence, and acceptance checks; older IR files remain valid. Validate the content object before layout, then check how much of it actually reached the page:</p>
+<pre class="code code-wrap">python3 scripts/build.py --check-content content.json
 python3 scripts/build.py --check-content content.json filled.html</pre>
     <p>The second form reports coverage: fields that exist in the content object but never made it into the document are the most common failure in agent-generated layouts, and they are invisible to a human skim.</p>
   </section>
@@ -167,7 +168,7 @@ python3 scripts/build.py --check-content content.json filled.html</pre>
       </div>
     </div>
     <div class="colophon">
-      <div><a href="./" style="color:var(--brand); text-decoration:none; font-weight:500;">Home</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="./about" style="color:var(--brand); text-decoration:none; font-weight:500;">About</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="./contact" style="color:var(--brand); text-decoration:none; font-weight:500;">Contact</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="./privacy" style="color:var(--brand); text-decoration:none; font-weight:500;">Privacy</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="https://github.com/tw93/kami" style="color:var(--brand); text-decoration:none; font-weight:500;">GitHub</a></div>
+      <div><a href="./" style="color:var(--brand); text-decoration:none; font-weight:500;">Home</a> · <a href="./about" style="color:var(--brand); text-decoration:none; font-weight:500;">About</a> · <a href="./contact" style="color:var(--brand); text-decoration:none; font-weight:500;">Contact</a> · <a href="./privacy" style="color:var(--brand); text-decoration:none; font-weight:500;">Privacy</a> · <a href="https://github.com/tw93/kami" style="color:var(--brand); text-decoration:none; font-weight:500;">GitHub</a></div>
       <div style="margin-top:8px; color: var(--olive); font-family: var(--serif);">
         MIT licensed. Runs where you install it.
       </div>

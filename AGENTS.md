@@ -38,8 +38,9 @@ Only the entries whose role is not obvious from the filename:
 - `scripts/mermaid_normalize.py` - re-themes a beautiful-mermaid SVG to the Kami
   palette and makes it WeasyPrint-safe. Pure Python, no Node, ships in the package.
 - `scripts/mcp_server.py` - zero-dependency MCP stdio server exposing
-  `kami_templates` / `kami_render` / `kami_check` / `kami_screenshot`, so an
-  MCP-capable agent can drive render plus verify without reading `SKILL.md`. Register
+  `kami_templates` / `kami_doctor` / `kami_render` / `kami_check` /
+  `kami_screenshot`, so an MCP-capable agent can diagnose, render, and verify
+  without reading `SKILL.md`. Register
   with `claude mcp add kami -- python3 <checkout>/scripts/mcp_server.py`.
 - `scripts/site_facts.py` - public-site fact drift checks (install commands, version,
   template and diagram counts across `index*.html`, `README.md`, `llms.txt`), wired
@@ -214,13 +215,11 @@ proof, not metadata proof. Claude Code: an isolated `HOME=/tmp/...` smoke with
 Applies when editing `.github/workflows/*.yml` or adding a test with a heavy
 dependency.
 
-- `check.yml` has two jobs. `verify-render` installs `weasyprint` / `pypdf` /
-  `Pygments`; `lint-and-test` ships only `Pygments`, so a `find_spec(...) is not None`
-  skip-guard there silently skips the test while still printing `OK:`. A green
-  `lint-and-test` is not coverage: any render-dependent test must run in
-  `verify-render`. `PyMuPDF` is installed in neither job, so the checks that call
-  `require_pymupdf()` (orphans, density, resume balance) have no CI coverage at all;
-  they only run locally.
+- `check.yml` has two jobs. `lint-and-test` runs dependency-light lint, metadata,
+  and package gates. `verify-render` installs `weasyprint` / `pypdf` / `PyMuPDF` /
+  `Pygments`, then runs the full test suite before template verification. Tests that
+  need an optional render dependency use the suite's explicit `SKIP:` counter and
+  fail when a CI-required dependency is unavailable; never turn a skip into `OK:`.
 - Validate workflow edits on a feature branch (push, watch the run go green) before
   merging to `main`. Local font and dependency assumptions diverge from CI more often
   than expected; this project has already burned commits on `pip` cache requiring a

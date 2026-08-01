@@ -37,15 +37,16 @@ The server speaks newline-delimited JSON-RPC 2.0 over stdio and has no third-par
 | Tool | What it does |
 | --- | --- |
 | `kami_templates` | List document templates, browser-only templates, the diagram library, and content schema types, with the reference docs to read before filling. |
+| `kami_doctor` | Report installed PDF render, visual-check, editable-PPTX, and font capabilities without treating an unavailable engine as a clean result. |
 | `kami_render` | Render trusted local Kami HTML to PDF through WeasyPrint, with build-time code highlighting. Returns the PDF path and page count. |
-| `kami_check` | Run the deterministic checks for a file. HTML: placeholders and markdown residue, plus content coverage when a content IR JSON is supplied. PDF: markdown residue, orphans, density. JSON: content IR schema validation. |
-| `kami_screenshot` | Rasterize every PDF page to PNG and return the paths plus a fixed review checklist for the perceptual pass. |
+| `kami_check` | Run the deterministic checks for a file. Returns the readable report plus stable rule IDs, findings, engine coverage, and explicit degraded checks. |
+| `kami_screenshot` | Rasterize every PDF page to PNG and return the paths, deterministic CJK font verdict, and a `review_pending` checklist contract for the perceptual pass. |
 
 The server card, including protocol version and tool list, is published at </.well-known/mcp/server-card.json>.
 
 ## Content schemas
 
-Nine schemas live under `references/schemas/`: changelog, equity-report, landing-page, letter, long-doc, one-pager, portfolio, resume, slides. Each states the structure and the quality bar for its type. Fill the schema first, lay out second.
+Nine schemas live under `references/schemas/`: changelog, equity-report, landing-page, letter, long-doc, one-pager, portfolio, resume, slides. Each states the structure and the quality bar for its type. A new `content.json` also carries a `brief` with audience, job, output contract, target, preserve boundary, evidence, and acceptance checks; older IR files remain valid. Fill the schema first, lay out second.
 
 ```
 python3 scripts/build.py --check-content content.json

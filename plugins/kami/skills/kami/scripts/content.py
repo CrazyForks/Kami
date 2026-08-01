@@ -2,7 +2,7 @@
 
 The content IR is a JSON file the agent writes before filling a template:
 
-    {"type": "resume", "lang": "cn", "content": {...}}
+    {"type": "resume", "lang": "cn", "brief": {...}, "content": {...}}
 
 `type` selects a contract from `references/schemas/<type>.json` (a lean JSON
 Schema subset). Validation happens before layout, so structural defects
@@ -23,7 +23,15 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 from checks import css_hidden_selectors, visible_html_text
-from shared import ROOT, SCHEMAS_DIR, content_schema_types, rel_to_root
+from shared import (
+    HTML_TEMPLATES,
+    PPTX_TEMPLATES,
+    ROOT,
+    SCHEMAS_DIR,
+    SCREEN_TEMPLATES,
+    content_schema_types,
+    rel_to_root,
+)
 
 # Strings longer than this are treated as prose the agent may rephrase while
 # filling; only shorter atomic values (names, metrics, dates) must survive
@@ -33,6 +41,8 @@ MAX_COVERAGE_VALUES = 5000
 MAX_COVERAGE_ISSUES = 200
 
 _CJK = re.compile(r"[\u3000-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]")
+_LANG_TAG = re.compile(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*")
+_ENVELOPE_FIELDS = {"type", "lang", "brief", "content"}
 
 _TYPE_CHECKS: dict[str, type | tuple[type, ...]] = {
     "object": dict,
@@ -41,6 +51,58 @@ _TYPE_CHECKS: dict[str, type | tuple[type, ...]] = {
     "number": (int, float),
     "integer": int,
     "boolean": bool,
+}
+
+BRIEF_SCHEMA = {
+    "type": "object",
+    "required": ["audience", "job", "template", "formats", "acceptance_checks"],
+    "additionalProperties": False,
+    "properties": {
+        "audience": {"type": "string", "minLength": 1, "maxLength": 240},
+        "job": {"type": "string", "minLength": 1, "maxLength": 240},
+        "template": {"type": "string", "minLength": 1, "maxLength": 80},
+        "formats": {
+            "type": "array", "minItems": 1, "maxItems": 4,
+            "items": {"type": "string", "enum": ["html", "pdf", "pptx", "png"]},
+        },
+        "page_target": {"type": "integer", "minimum": 1, "maximum": 200},
+        "length_target": {"type": "string", "minLength": 1, "maxLength": 120},
+        "narrative": {"type": "string", "minLength": 1, "maxLength": 800},
+        "required_facts": {
+            "type": "array", "maxItems": 100,
+            "items": {"type": "string", "minLength": 1, "maxLength": 240},
+        },
+        "required_assets": {
+            "type": "array", "maxItems": 100,
+            "items": {"type": "string", "minLength": 1, "maxLength": 500},
+        },
+        "acceptance_checks": {
+            "type": "array", "minItems": 1, "maxItems": 100,
+            "items": {"type": "string", "minLength": 1, "maxLength": 240},
+        },
+        "target": {
+            "type": "object", "additionalProperties": False,
+            "properties": {
+                "surface": {"type": "string", "minLength": 1, "maxLength": 120},
+                "page": {"type": "integer", "minimum": 1, "maximum": 200},
+                "viewport": {"type": "string", "minLength": 1, "maxLength": 80},
+                "state": {"type": "string", "minLength": 1, "maxLength": 120},
+                "element": {"type": "string", "minLength": 1, "maxLength": 160},
+            },
+        },
+        "preserve": {
+            "type": "array", "maxItems": 100,
+            "items": {"type": "string", "minLength": 1, "maxLength": 240},
+        },
+        "evidence": {
+            "type": "array", "maxItems": 100,
+            "items": {"type": "string", "minLength": 1, "maxLength": 500},
+        },
+        "explicit_deviations": {
+            "type": "array", "maxItems": 100,
+            "items": {"type": "string", "minLength": 1, "maxLength": 240},
+        },
+    },
 }
 
 
@@ -131,7 +193,8 @@ def validate_node(value, schema: dict, path: str = "content") -> list[str]:
     """Validate `value` against a JSON Schema subset; return issue strings.
 
     Supported keywords: type, required, properties, additionalProperties
-    (False only), items, minItems, maxItems, minLength, maxLength, enum.
+    (False only), items, minItems, maxItems, minLength, maxLength, minimum,
+    maximum, enum.
     `$comment` and `description` carry authoring guidance and are ignored.
     """
     issues: list[str] = []
@@ -152,6 +215,12 @@ def validate_node(value, schema: dict, path: str = "content") -> list[str]:
             issues.append(f"{path}: too short ({n} < {schema['minLength']} chars)")
         if "maxLength" in schema and n > schema["maxLength"]:
             issues.append(f"{path}: too long ({n} > {schema['maxLength']} chars)")
+
+    elif isinstance(value, (int, float)) and not isinstance(value, bool):
+        if "minimum" in schema and value < schema["minimum"]:
+            issues.append(f"{path}: too small ({value} < {schema['minimum']})")
+        if "maximum" in schema and value > schema["maximum"]:
+            issues.append(f"{path}: too large ({value} > {schema['maximum']})")
 
     elif isinstance(value, list):
         n = len(value)
@@ -180,18 +249,142 @@ def validate_node(value, schema: dict, path: str = "content") -> list[str]:
     return issues
 
 
+def _brief_contract_issues(
+    brief: dict,
+    doc_type: str,
+    lang: str | None = None,
+) -> list[str]:
+    """Cross-check the artifact brief against the selected document contract."""
+    issues: list[str] = []
+    template_names = {*HTML_TEMPLATES, *PPTX_TEMPLATES, *SCREEN_TEMPLATES}
+    template = brief.get("template")
+    if not isinstance(template, str):
+        return issues
+
+    allowed_templates = {
+        name for name in template_names
+        if name == doc_type or name.startswith(f"{doc_type}-")
+    }
+    allowed_templates.add(doc_type)
+    if template not in allowed_templates:
+        allowed = ", ".join(sorted(allowed_templates)) or doc_type
+        issues.append(
+            f"brief.template: {template!r} does not match content type "
+            f"{doc_type!r} (allowed: {allowed})"
+        )
+        return issues
+
+    formats = brief.get("formats")
+    if isinstance(formats, list):
+        if doc_type == "slides":
+            # A slide deliverable combines the WeasyPrint source/PDF with the
+            # editable python-pptx fallback, even though `template` names the
+            # primary authoring path.
+            supported_formats = {"html", "pdf", "pptx", "png"}
+        elif template in HTML_TEMPLATES:
+            supported_formats = {"html", "pdf", "png"}
+        elif template in SCREEN_TEMPLATES:
+            supported_formats = {"html", "png"}
+        elif template in PPTX_TEMPLATES:
+            supported_formats = {"pptx"}
+        else:
+            supported_formats = set()
+        unsupported = sorted(
+            value for value in formats
+            if isinstance(value, str) and value not in supported_formats
+        )
+        if unsupported:
+            issues.append(
+                f"brief.formats: template {template!r} does not support "
+                f"{', '.join(unsupported)} (allowed: "
+                f"{', '.join(sorted(supported_formats)) or 'none'})"
+            )
+
+    if isinstance(lang, str):
+        lang_key = lang.casefold()
+        if lang_key == "cn" or lang_key.startswith("zh-") or lang_key == "zh":
+            requested_family = "cn"
+        elif lang_key == "en" or lang_key.startswith("en-"):
+            requested_family = "en"
+        elif lang_key == "ko" or lang_key.startswith("ko-"):
+            requested_family = "ko"
+        else:
+            requested_family = None
+        template_family = (
+            "en" if template.endswith("-en")
+            else "ko" if template.endswith("-ko")
+            else "cn"
+        )
+        korean_pptx_fallback = (
+            template == "slides-en"
+            and requested_family == "ko"
+            and isinstance(formats, list)
+            and "pptx" in formats
+        )
+        if (
+            requested_family is not None
+            and requested_family != template_family
+            and not korean_pptx_fallback
+        ):
+            issues.append(
+                f"brief.template: {template!r} is the {template_family} variant "
+                f"and does not match language {lang!r}"
+            )
+
+    page_target = brief.get("page_target")
+    print_spec = HTML_TEMPLATES.get(template) or HTML_TEMPLATES.get(doc_type)
+    max_pages = print_spec.build_max_pages if print_spec is not None else 0
+    if (
+        doc_type == "resume"
+        and isinstance(page_target, int)
+        and not isinstance(page_target, bool)
+        and page_target != 2
+    ):
+        issues.append(
+            f"brief.page_target: resume templates require exactly 2 pages, got {page_target}"
+        )
+    elif (
+        isinstance(page_target, int)
+        and not isinstance(page_target, bool)
+        and max_pages > 0
+        and page_target > max_pages
+    ):
+        issues.append(
+            f"brief.page_target: {page_target} exceeds template "
+            f"{template!r} maximum {max_pages}"
+        )
+    return issues
+
+
 def validate_content_file(data) -> tuple[str | None, list[str]]:
     """Validate a parsed content IR envelope. Returns (doc_type, issues)."""
     if not isinstance(data, dict):
         return None, ["content file must be a JSON object"]
+    issues = [
+        f"top-level: unknown field {key!r}"
+        for key in sorted(set(data) - _ENVELOPE_FIELDS)
+    ]
+    lang = data.get("lang")
+    if not isinstance(lang, str) or not _LANG_TAG.fullmatch(lang):
+        issues.append(
+            "top-level 'lang' must be a language tag such as cn, en, ko, or zh-TW"
+        )
     doc_type = data.get("type")
     if not isinstance(doc_type, str) or doc_type not in content_schema_types():
         known = ", ".join(content_schema_types()) or "none"
-        return None, [f"top-level 'type' must be one of: {known}"]
+        issues.append(f"top-level 'type' must be one of: {known}")
+        return None, issues
     body = data.get("content")
     if not isinstance(body, dict):
-        return doc_type, ["top-level 'content' must be an object"]
-    return doc_type, validate_node(body, load_schema(doc_type))
+        issues.append("top-level 'content' must be an object")
+        return doc_type, issues
+    brief = data.get("brief")
+    if brief is not None:
+        issues.extend(validate_node(brief, BRIEF_SCHEMA, "brief"))
+        if isinstance(brief, dict):
+            issues.extend(_brief_contract_issues(brief, doc_type, lang))
+    issues.extend(validate_node(body, load_schema(doc_type)))
+    return doc_type, issues
 
 
 # ---------- coverage: content values must survive into the filled HTML ----------
@@ -228,10 +421,19 @@ def html_resource_attributes(raw: str) -> set[str]:
 
 
 def _asset_present(needle: str, attributes: set[str]) -> bool:
-    expected = unquote(urlsplit(needle).path).lstrip("./")
+    expected_url = urlsplit(needle)
+    expected = unquote(expected_url.path).lstrip("./")
     for raw in attributes:
-        actual = unquote(urlsplit(raw).path).lstrip("./")
-        if actual == expected or actual.endswith(f"/{expected}"):
+        actual_url = urlsplit(raw)
+        actual = unquote(actual_url.path).lstrip("./")
+        if expected_url.scheme or expected_url.netloc:
+            if (
+                actual_url.scheme.casefold() == expected_url.scheme.casefold()
+                and actual_url.netloc.casefold() == expected_url.netloc.casefold()
+                and actual == expected
+            ):
+                return True
+        elif actual == expected or actual.endswith(f"/{expected}"):
             return True
     return False
 
@@ -248,9 +450,12 @@ def _leaf_values(node, path: str):
 
 
 def coverage_issues(
-    content: dict,
+    content: dict | list,
     html_text: str,
     html_attributes: set[str] | None = None,
+    *,
+    root_path: str = "content",
+    force_assets: bool = False,
 ) -> tuple[list[str], int, int]:
     """Return (issues, checked, skipped) for content-to-HTML coverage.
 
@@ -262,7 +467,7 @@ def coverage_issues(
     issues: list[str] = []
     checked = skipped = 0
 
-    for index, (path, value) in enumerate(_leaf_values(content, "content")):
+    for index, (path, value) in enumerate(_leaf_values(content, root_path)):
         if index >= MAX_COVERAGE_VALUES:
             issues.append(f"content: too many atomic values to check (limit {MAX_COVERAGE_VALUES})")
             break
@@ -278,17 +483,21 @@ def coverage_issues(
         if not needle:
             continue
         if isinstance(value, str):
-            if len(needle) > COVERAGE_MAX_LEN:
-                skipped += 1
-                continue
-            # Asset paths are consumed by attributes, not visible text. Direct
-            # text-only callers may omit the attribute set; the real CLI always
-            # provides it and therefore proves required images were embedded.
-            if re.search(r"\.image(s\[\d+\])?$", path) or re.search(r"\.(png|jpe?g|svg|webp)$", needle, re.I):
+            is_asset = force_assets or bool(
+                re.search(r"\.image(s\[\d+\])?$", path)
+                or re.search(r"\.(png|jpe?g|svg|webp)$", needle, re.I)
+            )
+            # Asset paths are consumed by attributes, not visible text. Check
+            # them before the prose-length cutoff: a long URL is still a
+            # required resource, not prose that may be rephrased.
+            if is_asset:
                 if html_attributes is not None:
                     checked += 1
                     if not _asset_present(needle, html_attributes):
                         issues.append(f"{path}: asset not found in document attributes: {needle!r}")
+                continue
+            if len(needle) > COVERAGE_MAX_LEN:
+                skipped += 1
                 continue
         checked += 1
         cjk = bool(_CJK.search(needle))
@@ -352,9 +561,21 @@ def check_content(paths: list[str]) -> int:
         return 2
     html_raw = html_path.read_text(encoding="utf-8", errors="replace")
     html_text = visible_html_text(html_raw)
+    html_attributes = html_resource_attributes(html_raw)
     missing, checked, skipped = coverage_issues(
-        data["content"], html_text, html_resource_attributes(html_raw)
+        data["content"], html_text, html_attributes
     )
+    required_assets = (data.get("brief") or {}).get("required_assets", [])
+    if required_assets:
+        asset_missing, asset_checked, _ = coverage_issues(
+            required_assets,
+            html_text,
+            html_attributes,
+            root_path="brief.required_assets",
+            force_assets=True,
+        )
+        missing.extend(asset_missing)
+        checked += asset_checked
     if missing:
         print(f"ERROR: {html_rel}: {len(missing)} content value(s) missing from document")
         for issue in missing:

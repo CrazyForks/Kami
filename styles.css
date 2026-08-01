@@ -824,6 +824,10 @@
   }
   .code .k { color: var(--brand); }
   .code .c { color: var(--stone); }
+  .code.code-wrap {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
 
   /* List */
   ul.dash {

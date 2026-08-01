@@ -51,6 +51,12 @@ screenshots. Everyday template, script, and site work does not need it.
   green means "a clean checkout is fine", and only the second one is what a user
   downloads. Poll the structured status; piping `gh run watch` into `tail` swallows
   the exit code and reports an unfinished or failed run as passing.
+- The release workflow enforces the same contract before it can create or overwrite
+  an asset: `TAG == V$(cat VERSION)`, the tag resolves to the checked-out commit, an
+  exact-SHA `check.yml` run is complete and successful, and the rebuilt archive has
+  the same entry names and per-entry SHA-256 payloads as tracked `dist/kami.zip`.
+  Immediately before upload, it also confirms the remote tag still resolves to the
+  reviewed SHA. Keep these as hard gates; a manual dispatch is not an override.
 - Create a version tag only when the maintainer explicitly asks for a versioned
   release, and tag the commit that already contains the final refreshed
   `dist/kami.zip`. Never tag a source-only commit and refresh the archive afterward.

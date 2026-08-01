@@ -12,10 +12,11 @@ Reach for Kami when a user wants a finished document whose appearance matters: r
 - Start: `python3 scripts/mcp_server.py` (stdio, newline-delimited JSON-RPC 2.0)
 - Register: `claude mcp add kami -- python3 <checkout>/scripts/mcp_server.py`
 - Card: https://kami.tw93.fun/.well-known/mcp/server-card.json
-- Tools: `kami_templates` (templates, diagrams, schema types), `kami_render` (HTML to PDF), `kami_check` (deterministic checks), `kami_screenshot` (page PNGs + review checklist)
+- Tools: `kami_templates` (templates, diagrams, schema types), `kami_doctor` (installed capabilities), `kami_render` (HTML to PDF), `kami_check` (stable findings + coverage), `kami_screenshot` (page PNGs + CJK font verdict + `review_pending` checklist)
 
 ## Content contracts
 - Schemas: `references/schemas/<type>.json` for changelog, equity-report, landing-page, letter, long-doc, one-pager, portfolio, resume, slides
+- Artifact brief: new `content.json` files carry audience, job, output contract, target, preserve boundary, evidence, and acceptance checks under `brief`; older files without it remain valid
 - Validate: `python3 scripts/build.py --check-content content.json`
 - Coverage into the filled document: `python3 scripts/build.py --check-content content.json filled.html`
 

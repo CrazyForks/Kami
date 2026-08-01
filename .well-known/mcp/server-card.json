@@ -30,16 +30,20 @@
       "description": "List Kami document templates, browser-only templates, the diagram library, and content schema types, with the reference docs to read before filling."
     },
     {
+      "name": "kami_doctor",
+      "description": "Report whether this installed Kami runtime can render PDFs, run visual checks, build editable PPTX fallback decks, and resolve the expected font families. Read-only; missing capabilities are reported explicitly rather than treated as clean checks."
+    },
+    {
       "name": "kami_render",
       "description": "Render trusted local Kami HTML to PDF via WeasyPrint, with build-time code highlighting. Referenced file, HTTP, and HTTPS resources load with this process's permissions. Returns the PDF path and page count."
     },
     {
       "name": "kami_check",
-      "description": "Run Kami's deterministic checks for a file. HTML: placeholders + markdown residue (+ content coverage when a content IR JSON is given). PDF: markdown residue + orphans + density. JSON: content IR schema validation. Returns the full report text."
+      "description": "Run Kami's deterministic checks for a file. HTML: placeholders + markdown residue (+ content coverage when a content IR JSON is given). PDF: markdown residue + orphans + density. JSON: content IR schema validation. Returns the legacy report plus stable rule IDs, findings, coverage status, and explicit degraded checks."
     },
     {
       "name": "kami_screenshot",
-      "description": "Rasterize every PDF page to PNG for a perceptual review pass. Writes or replaces <pdf-stem>-visual/page-*.png, then returns the image paths and fixed review checklist; view every image against the checklist before shipping."
+      "description": "Rasterize every PDF page to PNG for a perceptual review pass. Writes or replaces <pdf-stem>-visual/page-*.png, then returns the image paths, deterministic CJK font verdict, and fixed review checklist; view every image against the checklist before shipping."
     }
   ]
 }

@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import warnings
 import zipfile
 from pathlib import Path
 
@@ -100,6 +101,7 @@ from verify import (  # noqa: E402
 
 _PASS = 0
 _FAIL = 0
+_SKIP = 0
 
 
 def check(name: str, predicate: bool, detail: str = "") -> None:
@@ -110,6 +112,17 @@ def check(name: str, predicate: bool, detail: str = "") -> None:
     else:
         _FAIL += 1
         print(f"ERROR: {name}{(' - ' + detail) if detail else ''}")
+
+
+def skip(name: str, detail: str = "", *, ci_required: bool = False) -> None:
+    """Record an unavailable optional-dependency test without calling it a pass."""
+    global _SKIP, _FAIL
+    _SKIP += 1
+    if ci_required and os.environ.get("CI"):
+        _FAIL += 1
+        print(f"ERROR: required CI test skipped: {name}{(' - ' + detail) if detail else ''}")
+    else:
+        print(f"SKIP: {name}{(' - ' + detail) if detail else ''}")
 
 
 def write_temp_html(body: str, suffix: str = "-en.html") -> Path:
@@ -755,8 +768,9 @@ def test_density_scans_the_only_page_of_a_single_page_pdf() -> None:
     """
     try:
         fitz = require_pymupdf()
-    except MissingDepError:
-        return  # PyMuPDF absent (the lint-and-test CI job); density suite skipped
+    except MissingDepError as exc:
+        skip("single-page density regression", str(exc), ci_required=True)
+        return
 
     with tempfile.TemporaryDirectory() as tmp:
         single = Path(tmp) / "one-page.pdf"
@@ -781,6 +795,24 @@ def test_density_scans_the_only_page_of_a_single_page_pdf() -> None:
     check("single-page PDF is scanned when passed explicitly",
           sum(explicit_scan[:2]) > 0,
           f"scan: {explicit_scan} (fixture leaves ~64% of the page empty)")
+
+
+def test_ci_required_skip_is_a_failure_not_a_pass() -> None:
+    """A missing heavy dependency in CI must turn the suite red."""
+    global _FAIL, _SKIP
+    original_fail, original_skip = _FAIL, _SKIP
+    original_ci = os.environ.get("CI")
+    try:
+        os.environ["CI"] = "1"
+        silently(skip, "negative-control fixture", ci_required=True)
+        rejected = _FAIL == original_fail + 1 and _SKIP == original_skip + 1
+    finally:
+        _FAIL, _SKIP = original_fail, original_skip
+        if original_ci is None:
+            os.environ.pop("CI", None)
+        else:
+            os.environ["CI"] = original_ci
+    check("CI-required skip increments failure and skip counters", rejected)
 
 
 def test_chinese_slides_mono_has_cjk_fallback() -> None:
@@ -1480,6 +1512,117 @@ def test_highlight_without_pygments_dependency() -> None:
           f"warning: {warning.getvalue()}")
 
 
+def test_render_pdf_preserves_last_good_output_on_post_render_failure() -> None:
+    """A failed metadata/page validation must not replace the prior PDF."""
+    import render as render_mod
+
+    class FakeHTML:
+        def __init__(self, **_kwargs):
+            pass
+
+        def write_pdf(self, path: str) -> None:
+            Path(path).write_bytes(b"new-candidate")
+
+    original_html = render_mod.require_weasyprint_html
+    original_reader = render_mod.require_pypdf_reader
+    original_metadata = render_mod.set_pdf_metadata
+    try:
+        render_mod.require_weasyprint_html = lambda: FakeHTML
+        render_mod.require_pypdf_reader = lambda: object
+
+        def fail_metadata(*_args, **_kwargs) -> None:
+            raise RuntimeError("injected metadata failure")
+
+        render_mod.set_pdf_metadata = fail_metadata
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            src = root / "source.html"
+            out = root / "output.pdf"
+            src.write_text("<html><body>candidate</body></html>", encoding="utf-8")
+            out.write_bytes(b"last-good")
+            try:
+                render_mod.render_pdf(src, out)
+            except RuntimeError as exc:
+                failed = "metadata failure" in str(exc)
+            else:
+                failed = False
+            staged = list(root.glob(".output.pdf-*"))
+            check("render failure preserves the last good PDF",
+                  failed and out.read_bytes() == b"last-good",
+                  f"failed={failed} bytes={out.read_bytes()!r}")
+            check("render failure cleans staged candidates", staged == [], str(staged))
+    finally:
+        render_mod.require_weasyprint_html = original_html
+        render_mod.require_pypdf_reader = original_reader
+        render_mod.set_pdf_metadata = original_metadata
+
+
+def test_release_gate_rejects_identity_mismatches() -> None:
+    from release_gate import release_identity_issues
+
+    good = release_identity_issues("V1.2.3", "1.2.3", "same", "same")
+    wrong_tag = release_identity_issues("V1.2.4", "1.2.3", "same", "same")
+    wrong_sha = release_identity_issues("V1.2.3", "1.2.3", "head", "tag")
+    check("release identity accepts an exact tag, version, and SHA", good == [], str(good))
+    check("release identity rejects a tag/version mismatch",
+          any("does not match VERSION" in issue for issue in wrong_tag), str(wrong_tag))
+    check("release identity rejects a tag/checkout SHA mismatch",
+          any("does not match checkout HEAD" in issue for issue in wrong_sha), str(wrong_sha))
+
+
+def test_release_gate_resolves_only_the_tag_namespace() -> None:
+    import release_gate as release_gate_mod
+
+    calls = []
+    original_git = release_gate_mod._git
+    try:
+        release_gate_mod._git = lambda *args: calls.append(args) or "tag-sha"
+        resolved = release_gate_mod.resolve_tag_commit("V1.2.3")
+    finally:
+        release_gate_mod._git = original_git
+    check("release gate cannot resolve a same-named branch as a tag",
+          resolved == "tag-sha"
+          and calls == [("rev-parse", "--verify", "refs/tags/V1.2.3^{commit}")],
+          str(calls))
+
+
+def test_release_gate_compares_zip_payloads_not_container_bytes() -> None:
+    from release_gate import archive_payload_issues
+
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        tracked = root / "tracked.zip"
+        equivalent = root / "equivalent.zip"
+        changed = root / "changed.zip"
+        duplicated = root / "duplicated.zip"
+        with zipfile.ZipFile(tracked, "w") as archive:
+            archive.writestr("kami/VERSION", "1.2.3")
+        with zipfile.ZipFile(equivalent, "w") as archive:
+            info = zipfile.ZipInfo("kami/VERSION", date_time=(2026, 1, 2, 3, 4, 6))
+            archive.writestr(info, "1.2.3")
+        with zipfile.ZipFile(changed, "w") as archive:
+            archive.writestr("kami/VERSION", "1.2.4")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            with zipfile.ZipFile(duplicated, "w") as archive:
+                archive.writestr("kami/VERSION", "first")
+                archive.writestr("kami/VERSION", "second")
+
+        same_issues = archive_payload_issues(tracked, equivalent)
+        changed_issues = archive_payload_issues(tracked, changed)
+        duplicate_issues = archive_payload_issues(duplicated, tracked)
+        check("release gate ignores ZIP container timestamp differences",
+              tracked.read_bytes() != equivalent.read_bytes() and same_issues == [],
+              str(same_issues))
+        check("release gate rejects changed entry payloads",
+              changed_issues == ["candidate payload differs: kami/VERSION"],
+              str(changed_issues))
+        check("release gate rejects duplicate ZIP entry names",
+              len(duplicate_issues) == 1
+              and "duplicate ZIP entry: kami/VERSION" in duplicate_issues[0],
+              str(duplicate_issues))
+
+
 def test_marp_themes_token_synced() -> None:
     """Marp theme CSS keeps its :root tokens in sync with tokens.json.
 
@@ -1740,6 +1883,9 @@ def test_validate_node_flags_structural_defects() -> None:
           "too long" in text and "too few items" in text
           and "missing required field 'value'" in text and "'hero' not in" in text,
           text)
+    numeric = validate_node(0, {"type": "integer", "minimum": 1, "maximum": 3}, "page")
+    check("validate_node enforces numeric bounds",
+          numeric == ["page: too small (0 < 1)"], str(numeric))
 
 
 def test_coverage_issues_catch_dropped_values() -> None:
@@ -1793,6 +1939,28 @@ def test_check_content_cli_validates_and_covers() -> None:
         try:
             rc = silently(check_content, [str(content_path), str(html)])
             check("check_content coverage passes when atomic values present", rc == 0)
+
+            payload["brief"] = {
+                "audience": "Technical collaborator",
+                "job": "Secure review",
+                "template": "letter-en",
+                "formats": ["html", "pdf"],
+                "required_assets": ["must-appear-logo.svg"],
+                "acceptance_checks": ["required logo is embedded"],
+            }
+            content_path.write_text(json.dumps(payload), encoding="utf-8")
+            missing_asset_rc = silently(check_content, [str(content_path), str(html)])
+            check("check_content coverage rejects a missing required brief asset",
+                  missing_asset_rc == 1)
+            html.write_text(
+                html.read_text(encoding="utf-8").replace(
+                    "</body>", '<img src="must-appear-logo.svg" alt=""></body>'
+                ),
+                encoding="utf-8",
+            )
+            embedded_asset_rc = silently(check_content, [str(content_path), str(html)])
+            check("check_content coverage accepts an embedded required brief asset",
+                  embedded_asset_rc == 0)
         finally:
             html.unlink()
         del payload["content"]["signature"]
@@ -1803,6 +1971,162 @@ def test_check_content_cli_validates_and_covers() -> None:
         check("check_content usage error returns 2", rc == 2)
 
 
+def test_content_ir_rejects_invalid_envelope() -> None:
+    from content import validate_content_file
+
+    body = {
+        "sender": "Ada Lovelace, London",
+        "date": "2026-07-13",
+        "recipient": "Charles Babbage",
+        "salutation": "Dear Charles,",
+        "paragraphs": [
+            "I write to state my purpose in one sentence: the engine deserves a program of its own.",
+            "The evidence sits in the notes: fifty operations, one loop, and a table the machine can follow.",
+            "My ask is specific: review the table this month so we can test it on the mill.",
+        ],
+        "signoff": "Sincerely,",
+        "signature": "Ada",
+    }
+    valid_type, valid_issues = validate_content_file({
+        "type": "letter", "lang": "zh-TW", "content": body,
+    })
+    _, invalid_issues = validate_content_file({
+        "type": "letter", "lang": "not_a_locale", "content": body,
+        "unexpected": True,
+    })
+    check("content IR accepts a strict language-tagged envelope",
+          valid_type == "letter" and valid_issues == [], str(valid_issues))
+    check("content IR rejects invalid lang and unknown top-level fields",
+          any("'lang'" in issue for issue in invalid_issues)
+          and any("unknown field 'unexpected'" in issue for issue in invalid_issues),
+          str(invalid_issues))
+
+
+def test_content_ir_validates_optional_artifact_brief() -> None:
+    from content import _brief_contract_issues, validate_content_file
+
+    body = {
+        "sender": "Ada Lovelace, London",
+        "date": "2026-07-13",
+        "recipient": "Charles Babbage",
+        "salutation": "Dear Charles,",
+        "paragraphs": [
+            "I write to state my purpose in one sentence: the engine deserves a program of its own.",
+            "The evidence sits in the notes: fifty operations, one loop, and a table the machine can follow.",
+            "My ask is specific: review the table this month so we can test it on the mill.",
+        ],
+        "signoff": "Sincerely,",
+        "signature": "Ada",
+    }
+    brief = {
+        "audience": "Technical collaborator",
+        "job": "Secure a review of the program table",
+        "template": "letter-en",
+        "formats": ["html", "pdf"],
+        "page_target": 1,
+        "acceptance_checks": ["one page", "specific ask remains visible"],
+        "target": {"surface": "letter body", "page": 1},
+        "preserve": ["letterhead", "signature"],
+        "evidence": ["rendered page 1"],
+    }
+    _, valid_issues = validate_content_file({
+        "type": "letter", "lang": "en", "brief": brief, "content": body,
+    })
+    invalid = dict(brief)
+    invalid["formats"] = ["docx"]
+    invalid["page_target"] = 0
+    invalid["mystery"] = True
+    _, invalid_issues = validate_content_file({
+        "type": "letter", "lang": "en", "brief": invalid, "content": body,
+    })
+    text = "\n".join(invalid_issues)
+    check("content IR accepts a structured artifact brief", valid_issues == [], str(valid_issues))
+    check("content IR rejects unknown brief fields, formats, and page bounds",
+          "brief: unknown field 'mystery'" in text
+          and "'docx' not in" in text
+          and "brief.page_target: too small" in text,
+          text)
+
+    conflicting = dict(brief, template="one-pager", page_target=2)
+    _, conflict_issues = validate_content_file({
+        "type": "one-pager", "lang": "cn", "brief": conflicting,
+        "content": {
+            "title": "A concise product claim",
+            "subtitle": "A subtitle long enough to explain the intended audience and outcome",
+            "metrics": [
+                {"value": "10x", "label": "faster"},
+                {"value": "99%", "label": "coverage"},
+                {"value": "2m", "label": "setup"},
+            ],
+            "argument": [
+                "A focused paragraph that explains the user problem, the proposed change, and why it matters now in concrete terms."
+            ],
+            "evidence": ["Measured result", "Observed behavior", "Verified source"],
+            "next_step": "Review the evidence and approve the next test.",
+        },
+    })
+    check("content IR rejects a page target beyond the template ceiling",
+          any("exceeds template 'one-pager' maximum 1" in issue for issue in conflict_issues),
+          str(conflict_issues))
+    one_page_resume_issues = _brief_contract_issues(
+        {"template": "resume-en", "formats": ["html", "pdf"], "page_target": 1},
+        "resume",
+        "en",
+    )
+    check("brief contract enforces the two-page resume hard stop",
+          any("require exactly 2 pages" in issue for issue in one_page_resume_issues),
+          str(one_page_resume_issues))
+
+    landing_issues = _brief_contract_issues(
+        {"template": "landing-page", "page_target": 2}, "landing-page"
+    )
+    slides_issues = _brief_contract_issues(
+        {"template": "slides", "page_target": 12}, "slides"
+    )
+    editable_slides_issues = _brief_contract_issues(
+        {"template": "slides-en", "formats": ["pptx"], "page_target": 12}, "slides"
+    )
+    impossible_resume_issues = _brief_contract_issues(
+        {"template": "resume", "formats": ["pptx"], "page_target": 2}, "resume"
+    )
+    wrong_language_issues = _brief_contract_issues(
+        {"template": "resume-en", "formats": ["html", "pdf"], "page_target": 2},
+        "resume",
+        "ko",
+    )
+    korean_pptx_fallback_issues = _brief_contract_issues(
+        {"template": "slides-en", "formats": ["html", "pdf", "pptx"]},
+        "slides",
+        "ko",
+    )
+    korean_pdf_wrong_variant_issues = _brief_contract_issues(
+        {"template": "slides-en", "formats": ["html", "pdf"]},
+        "slides",
+        "ko",
+    )
+    check("brief contract accepts screen, generic slide, and editable PPTX keys",
+          landing_issues == [] and slides_issues == [] and editable_slides_issues == [],
+          f"landing={landing_issues} slides={slides_issues} "
+          f"editable={editable_slides_issues}")
+    check("brief contract rejects a format the selected template cannot produce",
+          any("does not support pptx" in issue for issue in impossible_resume_issues),
+          str(impossible_resume_issues))
+    check("brief contract rejects a known language/template variant mismatch",
+          any("does not match language 'ko'" in issue for issue in wrong_language_issues),
+          str(wrong_language_issues))
+    check("brief contract keeps the documented Korean editable-PPTX fallback",
+          korean_pptx_fallback_issues == [], str(korean_pptx_fallback_issues))
+    check("brief contract limits the Korean slides-en fallback to editable PPTX",
+          any("does not match language 'ko'" in issue
+              for issue in korean_pdf_wrong_variant_issues),
+          str(korean_pdf_wrong_variant_issues))
+
+    _, legacy_issues = validate_content_file({
+        "type": "letter", "lang": "en", "content": body,
+    })
+    check("content IR keeps pre-brief files valid", legacy_issues == [], str(legacy_issues))
+
+
 def test_build_cli_dispatches_new_checks() -> None:
     rc, out = run_build_args(["--check-content"])
     check("build.py --check-content without args is a usage error",
@@ -1810,6 +2134,36 @@ def test_build_cli_dispatches_new_checks() -> None:
     rc, out = run_build_args(["--check-visual"])
     check("build.py --check-visual without args is a usage error",
           rc == 2 and "usage" in out, out.strip()[:120])
+    rc, out = run_build_args(["--doctor"])
+    check("build.py --doctor reports capability status",
+          rc in {0, 1} and "Kami doctor" in out
+          and "visual verification" in out,
+          out.strip()[:300])
+
+
+def test_skill_routes_visual_repairs_and_generated_assets_without_losing_contracts() -> None:
+    skill = (REPO_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    diagrams = (REPO_ROOT / "references" / "diagrams.md").read_text(encoding="utf-8")
+    for mode in ("New document", "Content-only", "Visual repair", "Generated asset"):
+        check(f"SKILL work mode keeps {mode}", mode in skill)
+    check("visual repair locks target, preserve, evidence, and artifact matrices",
+          all(term in skill for term in (
+              "`target`", "`preserve`", "PDF: target page", "Screen: 1280px",
+              "PPTX: editable source", "Generated asset: target slot",
+          )),
+          "visual feedback contract incomplete")
+    check("image generation routes from observed capability",
+          "Route from observed capability" in skill
+          and "Claude, Codex, most coding agents" not in skill,
+          "host-name capability list still present")
+    check("illustration brief keeps old visual system and adds semantic anchors",
+          all(term in diagrams for term in (
+              "1. Claim:", "2. Placement:", "3. Reference:", "4. Exclusions:",
+              "5. Canvas:", "6. Accent:", "7. Strokes and icons:",
+              "8. Labels:", "9. Content spec:",
+          ))
+          and "After two look-based rejections" in diagrams,
+          "illustration brief lost a field")
 
 
 def test_visual_checklist_and_output_dir() -> None:
@@ -1893,6 +2247,24 @@ def test_coverage_checks_asset_attributes() -> None:
     )
     check("coverage ignores assets in templates and plain links",
           len(hidden) == 2, f"issues={hidden} attrs={attrs}")
+    wrong_origin, _, _ = coverage_issues(
+        ["https://brand.example/logo.svg"],
+        "",
+        html_resource_attributes('<img src="https://other.example/logo.svg">'),
+        root_path="brief.required_assets",
+        force_assets=True,
+    )
+    same_origin, _, _ = coverage_issues(
+        ["https://brand.example/logo.svg?v=approved"],
+        "",
+        html_resource_attributes('<img src="https://brand.example/logo.svg?v=cache">'),
+        root_path="brief.required_assets",
+        force_assets=True,
+    )
+    check("required absolute assets cannot be impersonated by the same path on another host",
+          len(wrong_origin) == 1, str(wrong_origin))
+    check("required absolute assets tolerate cache-query changes on the same origin and path",
+          same_origin == [], str(same_origin))
 
 
 def test_coverage_caps_adversarial_reports() -> None:
@@ -1920,6 +2292,8 @@ def test_mcp_server_stdio_protocol() -> None:
         {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
          "params": {"name": "kami_templates", "arguments": {}}},
         {"jsonrpc": "2.0", "id": 4, "method": "tools/call",
+         "params": {"name": "kami_doctor", "arguments": {}}},
+        {"jsonrpc": "2.0", "id": 5, "method": "tools/call",
          "params": {"name": "nope", "arguments": {}}},
     ]
     stdin = "".join(json.dumps(m) + "\n" for m in msgs)
@@ -1938,8 +2312,8 @@ def test_mcp_server_stdio_protocol() -> None:
           and init.get("serverInfo", {}).get("name") == "kami",
           json.dumps(init)[:200])
     tools = [t["name"] for t in replies.get(2, {}).get("result", {}).get("tools", [])]
-    check("mcp tools/list exposes the four kami tools",
-          tools == ["kami_templates", "kami_render", "kami_check", "kami_screenshot"],
+    check("mcp tools/list exposes the five kami tools",
+          tools == ["kami_templates", "kami_doctor", "kami_render", "kami_check", "kami_screenshot"],
           str(tools))
     body = replies.get(3, {}).get("result", {}).get("content", [{}])[0].get("text", "{}")
     payload = json.loads(body)
@@ -1947,9 +2321,49 @@ def test_mcp_server_stdio_protocol() -> None:
           set(payload.get("document_templates", {})) == set(HTML_TEMPLATES)
           and payload.get("content_schema_types"),
           body[:200])
+    doctor_body = replies.get(4, {}).get("result", {}).get("content", [{}])[0].get("text", "{}")
+    doctor = json.loads(doctor_body)
+    check("mcp kami_doctor reports dependencies, fonts, and capabilities",
+          isinstance(doctor.get("ok"), bool)
+          and len(doctor.get("dependencies", [])) >= 3
+          and len(doctor.get("fonts", [])) >= 3
+          and "pdf_visual_review" in doctor.get("capabilities", {}),
+          doctor_body[:300])
     check("mcp unknown tool returns a JSON-RPC error",
-          "error" in replies.get(4, {}), json.dumps(replies.get(4, {}))[:200])
-    check("mcp notification produced no reply", len(replies) == 4, str(sorted(replies)))
+          "error" in replies.get(5, {}), json.dumps(replies.get(5, {}))[:200])
+    check("mcp notification produced no reply", len(replies) == 5, str(sorted(replies)))
+
+
+def test_mcp_check_returns_stable_findings_and_coverage() -> None:
+    from mcp_server import CHECK_REGISTRY, tool_check
+
+    with tempfile.TemporaryDirectory() as d:
+        clean = Path(d) / "clean.html"
+        broken = Path(d) / "broken.html"
+        clean.write_text("<html><body><p>Ready</p></body></html>", encoding="utf-8")
+        broken.write_text("<html><body><p>{{ missing }}</p></body></html>", encoding="utf-8")
+        clean_result = tool_check({"path": str(clean)})
+        broken_result = tool_check({"path": str(broken)})
+
+    check("MCP check registry carries unique stable rule IDs",
+          len(CHECK_REGISTRY) == len(set(CHECK_REGISTRY))
+          and all({"scope", "severity", "required_engine", "explanation"} <= set(rule)
+                  for rule in CHECK_REGISTRY.values()),
+          str(CHECK_REGISTRY))
+    check("MCP clean check returns coverage without findings",
+          clean_result["ok"] is True
+          and clean_result["degraded"] is False
+          and clean_result["findings"] == []
+          and [item["id"] for item in clean_result["coverage"]]
+          == ["html.placeholders", "html.markdown-residue"]
+          and clean_result["report"],
+          json.dumps(clean_result)[:500])
+    check("MCP failed check returns a stable finding and legacy report",
+          broken_result["ok"] is False
+          and broken_result["findings"][0]["id"] == "html.placeholders"
+          and broken_result["findings"][0]["status"] == "failed"
+          and "placeholder" in broken_result["report"].lower(),
+          json.dumps(broken_result)[:500])
 
 
 def test_mcp_server_rejects_bad_frames_without_exiting() -> None:
@@ -1976,6 +2390,76 @@ def test_mcp_server_rejects_bad_frames_without_exiting() -> None:
           by_id.get(1, {}).get("error", {}).get("code") == -32602
           and by_id.get(2, {}).get("error", {}).get("code") == -32602,
           result.stdout[:400])
+
+
+def test_mcp_all_tools_succeed_over_stdio() -> None:
+    """Exercise render, check, and screenshot through the installed protocol path."""
+    try:
+        from optional_deps import require_pypdf_reader, require_weasyprint_html
+        require_weasyprint_html()
+        require_pypdf_reader()
+        require_pymupdf()
+    except MissingDepError as exc:
+        skip("MCP all-tools stdio success path", str(exc), ci_required=True)
+        return
+
+    script = REPO_ROOT / "scripts" / "mcp_server.py"
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        html = root / "source.html"
+        pdf = root / "output.pdf"
+        html.write_text(
+            "<!doctype html><html><head><style>"
+            "@page{size:A4;margin:20mm}body{font-family:serif}"
+            "</style></head><body><h1>Kami MCP smoke</h1><p>Rendered.</p></body></html>",
+            encoding="utf-8",
+        )
+        msgs = [
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+             "params": {"protocolVersion": "2025-06-18"}},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+             "params": {"name": "kami_render", "arguments": {
+                 "html": str(html), "out": str(pdf)}}},
+            {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+             "params": {"name": "kami_check", "arguments": {"path": str(html)}}},
+            {"jsonrpc": "2.0", "id": 4, "method": "tools/call",
+             "params": {"name": "kami_screenshot", "arguments": {"pdf": str(pdf)}}},
+        ]
+        result = subprocess.run(
+            [sys.executable, str(script)],
+            input="".join(json.dumps(m) + "\n" for m in msgs),
+            capture_output=True, text=True, cwd=REPO_ROOT, timeout=120,
+        )
+        try:
+            replies = {m.get("id"): m for m in map(json.loads, result.stdout.strip().splitlines())}
+            payloads = {
+                reply_id: json.loads(
+                    replies[reply_id]["result"]["content"][0]["text"]
+                )
+                for reply_id in (2, 3, 4)
+            }
+        except (KeyError, json.JSONDecodeError) as exc:
+            check("MCP all-tools success path returns JSON results", False,
+                  f"{exc}: {(result.stdout + result.stderr)[:500]}")
+            return
+
+        render_result = payloads[2]
+        check_result = payloads[3]
+        screenshot_result = payloads[4]
+        check("MCP render succeeds over stdio",
+              result.returncode == 0 and render_result.get("pages") == 1 and pdf.is_file(),
+              json.dumps(render_result)[:300])
+        check("MCP check succeeds over stdio",
+              check_result.get("ok") is True and check_result.get("exit_code") == 0,
+              json.dumps(check_result)[:300])
+        page_paths = [Path(path) for path in screenshot_result.get("pages", [])]
+        check("MCP screenshot returns evidence without a false perceptual verdict",
+              "ok" not in screenshot_result
+              and screenshot_result.get("rasterized") is True
+              and screenshot_result.get("review_pending") is True
+              and screenshot_result.get("font_check", {}).get("ok") is True
+              and len(page_paths) == 1 and all(path.is_file() for path in page_paths),
+              json.dumps(screenshot_result)[:500])
 
 
 def test_mcp_render_guards_source_and_output_types() -> None:
@@ -2009,7 +2493,7 @@ def test_visual_rejects_empty_pdf_and_bad_dpi() -> None:
         from pypdf import PdfWriter
         from visual import render_pages
     except ImportError:
-        check("visual empty-PDF guard skipped without pypdf", True)
+        skip("visual empty-PDF guard", "pypdf unavailable", ci_required=True)
         return
 
     with tempfile.TemporaryDirectory() as d:
@@ -2086,7 +2570,7 @@ def main() -> int:
             continue
         func()
     print()
-    print(f"Passed: {_PASS} | Failed: {_FAIL}")
+    print(f"Passed: {_PASS} | Skipped: {_SKIP} | Failed: {_FAIL}")
     return 0 if _FAIL == 0 else 1
 
 
