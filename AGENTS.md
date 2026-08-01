@@ -29,8 +29,9 @@ Only the entries whose role is not obvious from the filename:
   fields carry the per-field quality bar distilled from `writing.md`, so schema edits
   and `writing.md` edits move together.
 - `scripts/shared.py` - the canonical registries (`HTML_TEMPLATES`,
-  `SCREEN_TEMPLATES`, `PPTX_TEMPLATES`, `DIAGRAM_TEMPLATES`) and each template's
-  `build_max_pages`. `build.py` derives its targets from them; add or remove a
+  `SCREEN_TEMPLATES`, `PPTX_TEMPLATES`, `MARP_TEMPLATES`, `DIAGRAM_TEMPLATES`) and each template's
+  `build_max_pages`. `build.py` derives its internal build targets from them;
+  Marp stays discovery-only because it uses an external CLI. Add or remove a
   template or diagram here, never in a per-script dict.
 - `scripts/render.py` - the single render entry (`render_pdf`, `build_slides`, PDF
   metadata stamping). `build.py`, `verify.py`, and `mcp_server.py` all call it; never

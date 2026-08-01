@@ -43,6 +43,8 @@ from render import render_pdf
 from shared import (
     DIAGRAM_TEMPLATES,
     HTML_TEMPLATES,
+    MARP_TEMPLATES,
+    PPTX_TEMPLATES,
     ROOT,
     SCREEN_TEMPLATES,
     content_schema_types,
@@ -54,7 +56,7 @@ from verify import check_fonts
 PROTOCOL_VERSION = "2025-06-18"
 SUPPORTED_PROTOCOL_VERSIONS = {"2024-11-05", "2025-03-26", "2025-06-18"}
 
-CHECK_RULESET_VERSION = 1
+CHECK_RULESET_VERSION = 2
 CHECK_REGISTRY = {
     "html.placeholders": {
         "scope": "html", "severity": "error", "required_engine": "stdlib",
@@ -176,6 +178,8 @@ def tool_templates(_args: dict) -> dict:
         "version": kami_version(),
         "document_templates": {name: spec.source for name, spec in HTML_TEMPLATES.items()},
         "screen_templates": dict(SCREEN_TEMPLATES),
+        "pptx_templates": dict(PPTX_TEMPLATES),
+        "marp_templates": dict(MARP_TEMPLATES),
         "diagram_templates": dict(DIAGRAM_TEMPLATES),
         "content_schema_types": content_schema_types(),
         "templates_dir": str(ROOT / "assets" / "templates"),
@@ -220,10 +224,10 @@ def tool_render(args: dict) -> dict:
     return {"pdf": str(out), "pages": pages}
 
 
-def _run_check(fn, argv: list[str]) -> tuple[int, str]:
+def _run_check(fn, argv: list[str], **kwargs) -> tuple[int, str]:
     buffer = io.StringIO()
     with contextlib.redirect_stdout(buffer):
-        code = fn(argv)
+        code = fn(argv, **kwargs)
     return code, buffer.getvalue().rstrip()
 
 
@@ -235,9 +239,11 @@ def _check_plan(path: Path, content: str | None) -> list[tuple[str, object, list
             ("html.markdown-residue", check_markdown_residue, [str(path)]),
         ]
         if content:
+            content_path = str(_resolve(content))
             checks.append((
-                "content.coverage", check_content,
-                [str(_resolve(content)), str(path)],
+                "content.contract",
+                check_content,
+                [content_path, str(path)],
             ))
         return checks
     if suffix == ".pdf":
@@ -260,15 +266,36 @@ def tool_check(args: dict) -> dict:
     coverage: list[dict] = []
     findings: list[dict] = []
     worst = 0
-    for rule_id, fn, argv in _check_plan(path, args.get("content")):
-        code, report = _run_check(fn, argv)
+    def record(rule_id: str, code: int, report: str) -> None:
+        nonlocal worst
         worst = max(worst, code)
-        reports.append(report)
         status = "passed" if code == 0 else ("failed" if code == 1 else "degraded")
         rule = {"id": rule_id, **CHECK_REGISTRY[rule_id]}
         coverage.append({**rule, "status": status, "exit_code": code})
         if status != "passed":
             findings.append({**rule, "status": status, "evidence": report})
+
+    for rule_id, fn, argv in _check_plan(path, args.get("content")):
+        if rule_id == "content.contract" and len(argv) == 2:
+            phase_codes: dict[str, int] = {}
+            _, report = _run_check(fn, argv, phase_codes=phase_codes)
+            reports.append(report)
+            contract_code = phase_codes.get("contract", 2)
+            record("content.contract", contract_code, report)
+            if contract_code == 0 and "coverage" in phase_codes:
+                record("content.coverage", phase_codes["coverage"], report)
+            else:
+                rule = {"id": "content.coverage", **CHECK_REGISTRY["content.coverage"]}
+                coverage.append({
+                    **rule,
+                    "status": "not_run",
+                    "exit_code": None,
+                    "blocked_by": "content.contract",
+                })
+            continue
+        code, report = _run_check(fn, argv)
+        reports.append(report)
+        record(rule_id, code, report)
     return {
         "ruleset_version": CHECK_RULESET_VERSION,
         "exit_code": worst,

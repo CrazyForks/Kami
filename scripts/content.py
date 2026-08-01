@@ -17,14 +17,20 @@ editorial, not verbatim.
 from __future__ import annotations
 
 import json
+import posixpath
 import re
-from html.parser import HTMLParser
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import unquote, urljoin, urlsplit
 
-from checks import css_hidden_selectors, visible_html_text
+from checks import (
+    _HtmlVisibilityParser,
+    _css_hidden_filters,
+    visible_html_evidence,
+    visible_html_text,
+)
 from shared import (
     HTML_TEMPLATES,
+    MARP_TEMPLATES,
     PPTX_TEMPLATES,
     ROOT,
     SCHEMAS_DIR,
@@ -63,7 +69,10 @@ BRIEF_SCHEMA = {
         "template": {"type": "string", "minLength": 1, "maxLength": 80},
         "formats": {
             "type": "array", "minItems": 1, "maxItems": 4,
-            "items": {"type": "string", "enum": ["html", "pdf", "pptx", "png"]},
+            "items": {
+                "type": "string",
+                "enum": ["html", "md", "pdf", "pptx", "png"],
+            },
         },
         "page_target": {"type": "integer", "minimum": 1, "maximum": 200},
         "length_target": {"type": "string", "minLength": 1, "maxLength": 120},
@@ -106,7 +115,7 @@ BRIEF_SCHEMA = {
 }
 
 
-class _HtmlAttributeParser(HTMLParser):
+class _HtmlAttributeParser(_HtmlVisibilityParser):
     """Collect resource-bearing HTML attributes for asset coverage checks."""
 
     _RESOURCE_ATTRS = {
@@ -117,59 +126,98 @@ class _HtmlAttributeParser(HTMLParser):
         "use": {"href"},
         "video": {"poster", "src"},
     }
-    _SKIP_TAGS = {"head", "noscript", "script", "style", "template"}
-    _VOID_TAGS = {
-        "area", "base", "br", "col", "embed", "hr", "img", "input",
-        "link", "meta", "param", "source", "track", "wbr",
+    _SKIP_TAGS = {
+        "clippath", "defs", "head", "mask", "metadata", "noembed", "noframes",
+        "noscript", "pattern", "rp", "script", "style", "symbol", "template",
     }
 
-    def __init__(self, hidden_classes: set[str], hidden_ids: set[str]) -> None:
-        super().__init__(convert_charrefs=True)
-        self._hidden_classes = hidden_classes
-        self._hidden_ids = hidden_ids
-        self._skip_depth = 0
-        self._skip_stack: list[bool] = []
+    def __init__(
+        self,
+        hidden_classes: set[str],
+        hidden_ids: set[str],
+        hidden_tags: set[str],
+        hidden_attrs: set[tuple[str, str | None]],
+        ambiguous_classes: set[str],
+        ambiguous_ids: set[str],
+        ambiguous_tags: set[str],
+        ambiguous_attrs: set[tuple[str, str | None]],
+        visibility_ambiguous: bool,
+    ) -> None:
+        super().__init__(
+            hidden_classes,
+            hidden_ids,
+            hidden_tags,
+            hidden_attrs,
+            ambiguous_classes,
+            ambiguous_ids,
+            ambiguous_tags,
+            ambiguous_attrs,
+            visibility_ambiguous,
+            skip_tags=self._SKIP_TAGS,
+            fail_closed=True,
+        )
         self.values: set[str] = set()
+        self.base_href: str | None = None
+        self.ambiguous_resources = False
+        self._picture_depth = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
         attrs_map = {name.lower(): (value or "") for name, value in attrs}
-        style = re.sub(r"\s+", "", attrs_map.get("style", "").lower())
-        hidden = (
-            tag in self._SKIP_TAGS
-            or "hidden" in attrs_map
-            or attrs_map.get("aria-hidden", "").lower() == "true"
-            or bool(set(attrs_map.get("class", "").split()) & self._hidden_classes)
-            or attrs_map.get("id", "") in self._hidden_ids
-            or "display:none" in style
-            or "visibility:hidden" in style
-        )
-        if tag not in self._VOID_TAGS:
-            self._skip_stack.append(hidden)
-        if hidden:
-            self._skip_depth += 1
-            if tag in self._VOID_TAGS:
-                self._skip_depth -= 1
-        if self._skip_depth:
+        if tag == "picture":
+            self._picture_depth += 1
+        if tag == "base" and self.base_href is None:
+            self.base_href = next(
+                (value.strip() for name, value in attrs
+                 if name.lower() == "href" and value and value.strip()),
+                None,
+            )
+        super().handle_starttag(tag, attrs)
+
+    def handle_endtag(self, tag: str) -> None:
+        super().handle_endtag(tag)
+        if tag.lower() == "picture" and self._picture_depth:
+            self._picture_depth -= 1
+
+    def _handle_visible_starttag(
+        self, tag: str, attrs: list[tuple[str, str | None]],
+    ) -> None:
+        attrs_map = {name.lower(): (value or "") for name, value in attrs}
+        if tag in {"picture", "source"} or attrs_map.get("srcset"):
+            self.ambiguous_resources = True
+        if self._picture_depth or tag == "source":
+            return
+        if tag == "source" and (attrs_map.get("media") or attrs_map.get("type")):
+            return
+        if tag in {"img", "source"} and attrs_map.get("srcset"):
+            candidates = [
+                part.strip().split()
+                for part in attrs_map["srcset"].split(",")
+                if part.strip()
+            ]
+            if len(candidates) == 1 and len(candidates[0]) == 1:
+                self.values.add(candidates[0][0])
             return
         allowed = self._RESOURCE_ATTRS.get(tag, set())
         for name, value in attrs:
             if name.lower() not in allowed or not value:
                 continue
             if name.lower() == "srcset":
-                self.values.update(part.strip().split()[0] for part in value.split(",") if part.strip())
+                continue
             else:
                 self.values.add(value.strip())
 
-    def handle_endtag(self, _tag: str) -> None:
-        hidden = self._skip_stack.pop() if self._skip_stack else False
-        if hidden and self._skip_depth > 0:
-            self._skip_depth -= 1
-
-    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        self.handle_starttag(tag, attrs)
-        if tag.lower() not in self._VOID_TAGS:
-            self.handle_endtag(tag)
+    def _handle_ambiguous_starttag(
+        self,
+        tag: str,
+        attrs: list[tuple[str, str | None]],
+    ) -> None:
+        attrs_map = {name.lower(): (value or "") for name, value in attrs}
+        allowed = self._RESOURCE_ATTRS.get(tag, set())
+        if any(name in attrs_map and attrs_map[name] for name in allowed):
+            self._visibility_ambiguous = True
+        if tag in {"picture", "source"} or attrs_map.get("srcset"):
+            self.ambiguous_resources = True
 
 
 def load_schema(doc_type: str) -> dict:
@@ -256,7 +304,15 @@ def _brief_contract_issues(
 ) -> list[str]:
     """Cross-check the artifact brief against the selected document contract."""
     issues: list[str] = []
-    template_names = {*HTML_TEMPLATES, *PPTX_TEMPLATES, *SCREEN_TEMPLATES}
+    if "page_target" not in brief and "length_target" not in brief:
+        issues.append("brief: requires page_target or length_target")
+
+    template_names = {
+        *HTML_TEMPLATES,
+        *MARP_TEMPLATES,
+        *PPTX_TEMPLATES,
+        *SCREEN_TEMPLATES,
+    }
     template = brief.get("template")
     if not isinstance(template, str):
         return issues
@@ -276,7 +332,9 @@ def _brief_contract_issues(
 
     formats = brief.get("formats")
     if isinstance(formats, list):
-        if doc_type == "slides":
+        if template in MARP_TEMPLATES:
+            supported_formats = {"html", "md", "pdf", "pptx"}
+        elif doc_type == "slides":
             # A slide deliverable combines the WeasyPrint source/PDF with the
             # editable python-pptx fallback, even though `template` names the
             # primary authoring path.
@@ -321,10 +379,15 @@ def _brief_contract_issues(
             and isinstance(formats, list)
             and "pptx" in formats
         )
+        korean_marp_fallback = (
+            template == "slides-marp"
+            and requested_family == "ko"
+        )
         if (
             requested_family is not None
             and requested_family != template_family
             and not korean_pptx_fallback
+            and not korean_marp_fallback
         ):
             issues.append(
                 f"brief.template: {template!r} is the {template_family} variant "
@@ -414,26 +477,49 @@ def _contains_atomic(haystack: str, needle: str) -> bool:
     return re.search(left + re.escape(needle) + right, haystack) is not None
 
 
-def html_resource_attributes(raw: str) -> set[str]:
-    parser = _HtmlAttributeParser(*css_hidden_selectors(raw))
+def html_resource_evidence(raw: str) -> tuple[set[str], bool]:
+    parser = _HtmlAttributeParser(*_css_hidden_filters(raw, fail_closed=True))
     parser.feed(raw)
-    return parser.values
+    if parser._ambiguous_markup:
+        return set(), True
+    if parser.base_href:
+        values = {urljoin(parser.base_href, value) for value in parser.values}
+    else:
+        values = parser.values
+    return values, (
+        parser._visibility_ambiguous or parser.ambiguous_resources
+    )
+
+
+def html_resource_attributes(raw: str) -> set[str]:
+    return html_resource_evidence(raw)[0]
 
 
 def _asset_present(needle: str, attributes: set[str]) -> bool:
     expected_url = urlsplit(needle)
-    expected = unquote(expected_url.path).lstrip("./")
+    expected_path = posixpath.normpath(unquote(expected_url.path))
+    expected_is_url = bool(expected_url.scheme or expected_url.netloc)
+    expected_is_absolute = expected_path.startswith("/")
     for raw in attributes:
         actual_url = urlsplit(raw)
-        actual = unquote(actual_url.path).lstrip("./")
-        if expected_url.scheme or expected_url.netloc:
+        actual_path = posixpath.normpath(unquote(actual_url.path))
+        actual_is_url = bool(actual_url.scheme or actual_url.netloc)
+        if expected_is_url:
             if (
                 actual_url.scheme.casefold() == expected_url.scheme.casefold()
                 and actual_url.netloc.casefold() == expected_url.netloc.casefold()
-                and actual == expected
+                and actual_path == expected_path
             ):
                 return True
-        elif actual == expected or actual.endswith(f"/{expected}"):
+        elif actual_is_url:
+            continue
+        elif expected_is_absolute:
+            if actual_path == expected_path:
+                return True
+        elif (
+            actual_path == expected_path
+            or actual_path.endswith(f"/{expected_path}")
+        ):
             return True
     return False
 
@@ -515,18 +601,27 @@ def coverage_issues(
     return issues, checked, skipped
 
 
-def check_content(paths: list[str]) -> int:
+def check_content(
+    paths: list[str],
+    *,
+    phase_codes: dict[str, int] | None = None,
+) -> int:
     """CLI: --check-content content.json [filled.html]
 
     Validates the content IR against its schema; with a filled HTML file,
     also verifies every short atomic value made it into the visible text.
     """
+    def finish(phase: str, code: int) -> int:
+        if phase_codes is not None:
+            phase_codes[phase] = code
+        return code
+
     args = [p for p in paths if not p.startswith("-")]
     if not args or len(args) > 2:
         known = ", ".join(content_schema_types()) or "none"
         print("ERROR: usage: --check-content content.json [filled.html]")
         print(f"  known types: {known}")
-        return 2
+        return finish("contract", 2)
 
     content_path = Path(args[0])
     if not content_path.is_absolute():
@@ -534,20 +629,21 @@ def check_content(paths: list[str]) -> int:
     rel = rel_to_root(content_path)
     if not content_path.exists():
         print(f"ERROR: {args[0]}: file not found")
-        return 2
+        return finish("contract", 2)
     try:
         data = json.loads(content_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         print(f"ERROR: {rel}: invalid JSON: {exc}")
-        return 1
+        return finish("contract", 1)
 
     doc_type, issues = validate_content_file(data)
     if issues:
         print(f"ERROR: {rel}: {len(issues)} schema issue(s)")
         for issue in issues:
             print(f"  {issue}")
-        return 1
+        return finish("contract", 1)
     print(f"OK: {rel}: valid {doc_type} content")
+    finish("contract", 0)
 
     if len(args) == 1:
         return 0
@@ -558,29 +654,64 @@ def check_content(paths: list[str]) -> int:
     html_rel = rel_to_root(html_path)
     if not html_path.exists():
         print(f"ERROR: {args[1]}: file not found")
-        return 2
+        return finish("coverage", 2)
     html_raw = html_path.read_text(encoding="utf-8", errors="replace")
-    html_text = visible_html_text(html_raw)
-    html_attributes = html_resource_attributes(html_raw)
-    missing, checked, skipped = coverage_issues(
+    html_text, text_ambiguous = visible_html_evidence(html_raw, fail_closed=True)
+    html_attributes, resource_ambiguous = html_resource_evidence(html_raw)
+    content_missing, checked, skipped = coverage_issues(
         data["content"], html_text, html_attributes
     )
+    text_missing = [
+        issue for issue in content_missing
+        if "asset not found in document attributes" not in issue
+    ]
+    asset_missing = [
+        issue for issue in content_missing
+        if "asset not found in document attributes" in issue
+    ]
     required_assets = (data.get("brief") or {}).get("required_assets", [])
     if required_assets:
-        asset_missing, asset_checked, _ = coverage_issues(
+        required_asset_missing, asset_checked, _ = coverage_issues(
             required_assets,
             html_text,
             html_attributes,
             root_path="brief.required_assets",
             force_assets=True,
         )
-        missing.extend(asset_missing)
+        asset_missing.extend(required_asset_missing)
         checked += asset_checked
+    missing = [*text_missing, *asset_missing]
     if missing:
-        print(f"ERROR: {html_rel}: {len(missing)} content value(s) missing from document")
-        for issue in missing:
+        definite_missing = [
+            *(text_missing if not text_ambiguous else []),
+            *(asset_missing if not resource_ambiguous else []),
+        ]
+        indeterminate = [
+            *(text_missing if text_ambiguous else []),
+            *(asset_missing if resource_ambiguous else []),
+        ]
+        if not definite_missing:
+            print(
+                f"ERROR: {html_rel}: content coverage is indeterminate because "
+                "visibility or resource selection could not be proven statically"
+            )
+            for issue in missing:
+                print(f"  {issue}")
+            return finish("coverage", 2)
+        print(
+            f"ERROR: {html_rel}: {len(definite_missing)} content value(s) "
+            "definitely missing from document"
+        )
+        for issue in definite_missing:
             print(f"  {issue}")
-        return 1
+        if indeterminate:
+            print(
+                f"  NOTE: {len(indeterminate)} additional value(s) could not be "
+                "proven because visibility or resource selection is indeterminate"
+            )
+            for issue in indeterminate:
+                print(f"    {issue}")
+        return finish("coverage", 1)
     note = f" ({skipped} prose field(s) not held verbatim)" if skipped else ""
     print(f"OK: {html_rel}: all {checked} atomic content values present{note}")
-    return 0
+    return finish("coverage", 0)

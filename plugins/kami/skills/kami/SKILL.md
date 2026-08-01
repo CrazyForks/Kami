@@ -31,15 +31,15 @@ Skip and fall back to the brand profile defaults if the referenced path does not
 
 ## Step 1 · Decide the language
 
-**Match the user's language.** Chinese -> `*.html` / `slides-weasy.html`. English -> `*-en.html` / `slides-weasy-en.html`. Japanese -> CJK path (`.html` / `slides-weasy.html`) as best-effort, JP Mincho first, visual QA before shipping. Korean -> dedicated `*-ko.html` / `slides-weasy-ko.html` family as best-effort, visual QA before shipping. Reference docs are shared English specs.
+**Match the user's language.** Chinese -> `*.html` / `slides-weasy.html`. English -> `*-en.html` / `slides-weasy-en.html`. Japanese -> CJK path (`.html` / `slides-weasy.html` / `slides-marp.md`) as best-effort, JP Mincho first, visual QA before shipping. Korean -> dedicated `*-ko.html` / `slides-weasy-ko.html` family, with `slides-marp.md` as the best-effort Markdown path, visual QA before shipping. Reference docs are shared English specs.
 
-| User language | HTML templates | Slides (PDF default) | Slides (PPTX fallback) |
-|---|---|---|---|
-| Chinese (primary) | `*.html` | `slides-weasy.html` | `slides.py` |
-| English | `*-en.html` | `slides-weasy-en.html` | `slides-en.py` |
-| Japanese (best-effort) | `*.html` | `slides-weasy.html` | `slides.py` |
-| Korean (best-effort) | `*-ko.html` | `slides-weasy-ko.html` | n/a (use `slides-en.py` only if PPTX is required) |
-| Other languages (best-effort) | choose CJK or EN path by script coverage, then verify manually | choose `slides-weasy.html` or `slides-weasy-en.html`, then verify manually | use `slides.py` / `slides-en.py` only if PPTX is required |
+| User language | HTML templates | Slides (PDF default) | Slides (PPTX fallback) | Slides (Marp) |
+|---|---|---|---|---|
+| Chinese (primary) | `*.html` | `slides-weasy.html` | `slides.py` | `slides-marp.md` |
+| English | `*-en.html` | `slides-weasy-en.html` | `slides-en.py` | `slides-marp-en.md` |
+| Japanese (best-effort) | `*.html` | `slides-weasy.html` | `slides.py` | `slides-marp.md` |
+| Korean (best-effort) | `*-ko.html` | `slides-weasy-ko.html` | n/a (use `slides-en.py` only if PPTX is required) | `slides-marp.md` |
+| Other languages (best-effort) | choose CJK or EN path by script coverage, then verify manually | choose `slides-weasy.html` or `slides-weasy-en.html`, then verify manually | use `slides.py` / `slides-en.py` only if PPTX is required | choose `slides-marp.md` or `slides-marp-en.md`, then verify manually |
 
 > Default to the WeasyPrint HTML path; fall back to PPTX (`slides*.py`) only when the user explicitly needs an editable deck.
 
@@ -228,7 +228,7 @@ When building a new document (not a text tweak on an existing one), write the di
 }
 ```
 
-`type` is one of the schema names in `references/schemas/` (one-pager, letter, resume, long-doc, portfolio, slides, equity-report, changelog, landing-page). `brief` records why this artifact exists and how it will be judged; it is not audience copy and does not participate in content-to-HTML coverage. For a visual repair, add `target`, `evidence`, and `preserve` so the fix cannot silently grow beyond the reported surface. Older IR files without `brief` remain valid, but every new document should write it. Read the matching content schema before writing: its `$comment` notes carry the per-field quality bar. Then validate before any layout work:
+`type` is one of the schema names in `references/schemas/` (one-pager, letter, resume, long-doc, portfolio, slides, equity-report, changelog, landing-page). `brief` records why this artifact exists and how it will be judged; it is not audience copy. Only `brief.required_assets` joins the content-to-HTML coverage gate. For a visual repair, add `target`, `evidence`, and `preserve` so the fix cannot silently grow beyond the reported surface. Older IR files without `brief` remain valid, but every new document should write it. Read the matching content schema before writing: its `$comment` notes carry the per-field quality bar. Then validate before any layout work:
 
 The top-level envelope is strict: it contains only `type`, `lang`, `brief`, and `content`.
 Use a language tag such as `cn`, `en`, `ko`, or `zh-TW`; misspelled tags and extra

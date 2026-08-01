@@ -70,6 +70,7 @@ from optional_deps import MissingDepError, require_pymupdf  # noqa: E402
 from shared import (  # noqa: E402
     DIAGRAM_TEMPLATES,
     HTML_TEMPLATES,
+    MARP_TEMPLATES,
     PARCHMENT_RGB,
     ROOT as REPO_ROOT,
     SCREEN_TEMPLATES,
@@ -77,6 +78,7 @@ from shared import (  # noqa: E402
     build_targets,
     diagram_targets,
     load_checks_thresholds,
+    marp_targets,
     pptx_targets,
     screen_targets,
 )
@@ -366,6 +368,14 @@ def test_registry_consistency() -> None:
           f"got {len(PPTX_TARGETS)}")
     check("PPTX_TARGETS in build.py matches shared.pptx_targets()",
           dict(PPTX_TARGETS) == pptx_targets())
+    check("Marp registry maps authoring entries with matching CSS",
+          marp_targets() == MARP_TEMPLATES
+          and all(
+              (TEMPLATES / source).exists()
+              and (TEMPLATES / source).with_suffix(".css").exists()
+              for source in MARP_TEMPLATES.values()
+          ),
+          str(MARP_TEMPLATES))
     check("PARCHMENT_RGB is canonical", PARCHMENT_RGB == (0xF5, 0xF4, 0xED))
 
 
@@ -1246,14 +1256,23 @@ def test_check_markdown_residue_skips_html_code_blocks() -> None:
         "<html><body><p>Visible text</p><pre><code>**example** `cmd`</code></pre></body></html>",
         suffix=".html",
     )
+    ambiguous_css = write_temp_html(
+        '<html><head><link rel="stylesheet" href="theme.css"></head>'
+        '<body><p>Visible **raw despite CSS uncertainty**</p></body></html>',
+        suffix=".html",
+    )
     try:
         rc = silently(check_markdown_residue, [str(dirty)])
         check("check_markdown_residue fails visible raw markdown", rc == 1, f"rc={rc}")
         rc = silently(check_markdown_residue, [str(clean_code)])
         check("check_markdown_residue skips code/pre blocks", rc == 0, f"rc={rc}")
+        rc = silently(check_markdown_residue, [str(ambiguous_css)])
+        check("markdown residue includes text under ambiguous CSS",
+              rc == 1, f"rc={rc}")
     finally:
         dirty.unlink(missing_ok=True)
         clean_code.unlink(missing_ok=True)
+        ambiguous_css.unlink(missing_ok=True)
 
 
 # --------------------------- cross-template consistency ---------------------------
@@ -1940,11 +1959,87 @@ def test_check_content_cli_validates_and_covers() -> None:
             rc = silently(check_content, [str(content_path), str(html)])
             check("check_content coverage passes when atomic values present", rc == 0)
 
+            ambiguous_html = write_temp_html(
+                html.read_text(encoding="utf-8").replace(
+                    "<p>", '<p style="font-size:calc(1px - 1px)">',
+                )
+            )
+            try:
+                ambiguous_rc = silently(
+                    check_content,
+                    [str(content_path), str(ambiguous_html)],
+                )
+                check("check_content degrades indeterminate visibility evidence",
+                      ambiguous_rc == 2)
+            finally:
+                ambiguous_html.unlink()
+
+            missing_text_html = write_temp_html(
+                html.read_text(encoding="utf-8")
+                .replace("2026-07-13", "2026-07-14")
+                .replace("</body>", '<img srcset="a.png 1x,b.png 2x"></body>')
+            )
+            try:
+                missing_text_rc = silently(
+                    check_content,
+                    [str(content_path), str(missing_text_html)],
+                )
+                check("resource ambiguity cannot downgrade definite missing text",
+                      missing_text_rc == 1)
+            finally:
+                missing_text_html.unlink()
+
+            for style in (
+                "clip-path:circle(50%)",
+                "mask-image:url(#rounded)",
+                "filter:url(#soften)",
+            ):
+                decorated_html = write_temp_html(
+                    html.read_text(encoding="utf-8")
+                    .replace("2026-07-13", "2026-07-14")
+                    .replace(
+                        "</body>",
+                        f'<img style="{style}" src="decorative.svg"></body>',
+                    )
+                )
+                try:
+                    decorated_rc = silently(
+                        check_content,
+                        [str(content_path), str(decorated_html)],
+                    )
+                    check("decorative resource ambiguity cannot downgrade missing text",
+                          decorated_rc == 1, style)
+                finally:
+                    decorated_html.unlink()
+
+            for decoration in (
+                '<svg><path filter="url(#shadow)"></path></svg>',
+                '<svg><circle mask="url(#fade)"></circle></svg>',
+                '<svg><g clip-path="url(#round)"></g></svg>',
+                '<style>.decor { clip-path:circle(50%) }</style>'
+                '<svg><path class="decor"></path></svg>',
+            ):
+                decorated_svg_html = write_temp_html(
+                    html.read_text(encoding="utf-8")
+                    .replace("2026-07-13", "2026-07-14")
+                    .replace("</body>", f"{decoration}</body>")
+                )
+                try:
+                    decorated_svg_rc = silently(
+                        check_content,
+                        [str(content_path), str(decorated_svg_html)],
+                    )
+                    check("decorative SVG ambiguity cannot downgrade missing text",
+                          decorated_svg_rc == 1, decoration)
+                finally:
+                    decorated_svg_html.unlink()
+
             payload["brief"] = {
                 "audience": "Technical collaborator",
                 "job": "Secure review",
                 "template": "letter-en",
                 "formats": ["html", "pdf"],
+                "page_target": 1,
                 "required_assets": ["must-appear-logo.svg"],
                 "acceptance_checks": ["required logo is embedded"],
             }
@@ -1952,6 +2047,27 @@ def test_check_content_cli_validates_and_covers() -> None:
             missing_asset_rc = silently(check_content, [str(content_path), str(html)])
             check("check_content coverage rejects a missing required brief asset",
                   missing_asset_rc == 1)
+            mixed_html = write_temp_html(
+                html.read_text(encoding="utf-8")
+                .replace("2026-07-13", "2026-07-14")
+                .replace("</body>", '<img srcset="a.png 1x,b.png 2x"></body>')
+            )
+            try:
+                mixed_report = io.StringIO()
+                with contextlib.redirect_stdout(mixed_report):
+                    mixed_rc = check_content(
+                        [str(content_path), str(mixed_html)]
+                    )
+                report = mixed_report.getvalue()
+                check("mixed coverage reports definite and indeterminate findings separately",
+                      mixed_rc == 1
+                      and "definitely missing" in report
+                      and "NOTE:" in report
+                      and report.index("content.date") < report.index("NOTE:")
+                      and report.index("brief.required_assets") > report.index("NOTE:"),
+                      report)
+            finally:
+                mixed_html.unlink()
             html.write_text(
                 html.read_text(encoding="utf-8").replace(
                     "</body>", '<img src="must-appear-logo.svg" alt=""></body>'
@@ -2003,7 +2119,12 @@ def test_content_ir_rejects_invalid_envelope() -> None:
 
 
 def test_content_ir_validates_optional_artifact_brief() -> None:
-    from content import _brief_contract_issues, validate_content_file
+    from content import (
+        BRIEF_SCHEMA,
+        _brief_contract_issues,
+        validate_content_file,
+        validate_node,
+    )
 
     body = {
         "sender": "Ada Lovelace, London",
@@ -2095,12 +2216,15 @@ def test_content_ir_validates_optional_artifact_brief() -> None:
         "ko",
     )
     korean_pptx_fallback_issues = _brief_contract_issues(
-        {"template": "slides-en", "formats": ["html", "pdf", "pptx"]},
+        {
+            "template": "slides-en", "formats": ["html", "pdf", "pptx"],
+            "page_target": 12,
+        },
         "slides",
         "ko",
     )
     korean_pdf_wrong_variant_issues = _brief_contract_issues(
-        {"template": "slides-en", "formats": ["html", "pdf"]},
+        {"template": "slides-en", "formats": ["html", "pdf"], "page_target": 12},
         "slides",
         "ko",
     )
@@ -2120,6 +2244,39 @@ def test_content_ir_validates_optional_artifact_brief() -> None:
           any("does not match language 'ko'" in issue
               for issue in korean_pdf_wrong_variant_issues),
           str(korean_pdf_wrong_variant_issues))
+
+    marp_brief = dict(
+        brief,
+        template="slides-marp-en",
+        formats=["md", "pdf"],
+        page_target=12,
+    )
+    marp_schema_issues = validate_node(marp_brief, BRIEF_SCHEMA, "brief")
+    marp_contract_issues = _brief_contract_issues(marp_brief, "slides", "en")
+    korean_marp_issues = _brief_contract_issues(
+        dict(marp_brief, template="slides-marp"),
+        "slides",
+        "ko",
+    )
+    check("brief contract accepts the shipped Marp authoring path",
+          marp_schema_issues == []
+          and marp_contract_issues == []
+          and korean_marp_issues == [],
+          f"schema={marp_schema_issues} contract={marp_contract_issues} "
+          f"korean={korean_marp_issues}")
+
+    no_length_contract = dict(brief)
+    no_length_contract.pop("page_target")
+    target_issues = _brief_contract_issues(no_length_contract, "letter", "en")
+    length_only_issues = _brief_contract_issues(
+        dict(no_length_contract, length_target="600 to 800 words"),
+        "letter",
+        "en",
+    )
+    check("artifact brief requires a page or length target",
+          any("page_target or length_target" in issue for issue in target_issues)
+          and length_only_issues == [],
+          f"missing={target_issues} length_only={length_only_issues}")
 
     _, legacy_issues = validate_content_file({
         "type": "letter", "lang": "en", "content": body,
@@ -2199,7 +2356,7 @@ def test_coverage_survives_split_markup_values() -> None:
 def test_coverage_rejects_substrings_and_hidden_text() -> None:
     """Changed facts and hidden-only copies must not satisfy coverage."""
     from content import coverage_issues
-    from checks import visible_html_text
+    from checks import visible_html_evidence, visible_html_text
 
     cases = [
         ({"metric": "62%"}, "Revenue reached 162%"),
@@ -2223,13 +2380,233 @@ def test_coverage_rejects_substrings_and_hidden_text() -> None:
     check("coverage ignores head, template, hidden, and display-none text",
           len(missing) == 1, f"text={text!r} issues={missing}")
 
+    malformed_hidden = (
+        '<div hidden><img></img><p>SECRET-FACT</p></div>'
+        '<p>VISIBLE-FACT</p>'
+    )
+    malformed_text = visible_html_text(malformed_hidden)
+    malformed_missing, _, _ = coverage_issues(
+        {"hidden": "SECRET-FACT", "visible": "VISIBLE-FACT"},
+        malformed_text,
+    )
+    check("visible-text parser keeps hidden scope across a void closing tag",
+          len(malformed_missing) == 1
+          and "SECRET-FACT" in malformed_missing[0]
+          and "VISIBLE-FACT" in malformed_text,
+          f"text={malformed_text!r} issues={malformed_missing}")
+
+    self_closing_hidden = (
+        '<div hidden/><p>SELF-CLOSING-SECRET</p></div>'
+        '<p>SELF-CLOSING-VISIBLE</p>'
+    )
+    self_closing_text = visible_html_text(self_closing_hidden)
+    self_closing_missing, _, _ = coverage_issues(
+        {
+            "hidden": "SELF-CLOSING-SECRET",
+            "visible": "SELF-CLOSING-VISIBLE",
+        },
+        self_closing_text,
+    )
+    check("visible-text parser follows HTML semantics for non-void self-closing tags",
+          len(self_closing_missing) == 1
+          and "SELF-CLOSING-SECRET" in self_closing_missing[0]
+          and "SELF-CLOSING-VISIBLE" in self_closing_text,
+          f"text={self_closing_text!r} issues={self_closing_missing}")
+
+    benign_selector_text = visible_html_text(
+        '<style>[hidden] { display: none } '
+        '[aria-hidden="true"] { visibility: hidden } '
+        ':root { --fallback-display: none }</style>'
+        '<p hidden>HIDDEN-BY-ATTRIBUTE</p>'
+        '<p aria-hidden="false">VISIBLE-ARIA-FALSE</p>'
+        '<p>VISIBLE-AFTER-SELECTOR</p>'
+    )
+    check("visibility parser scopes attribute selectors and custom properties",
+          "HIDDEN-BY-ATTRIBUTE" not in benign_selector_text
+          and "VISIBLE-ARIA-FALSE" in benign_selector_text
+          and "VISIBLE-AFTER-SELECTOR" in benign_selector_text,
+          repr(benign_selector_text))
+
+    important_hidden_text = visible_html_text(
+        '<style>.important-secret {'
+        'display: none !important; display: block'
+        '}</style>'
+        '<p class="important-secret">IMPORTANT-SECRET</p>',
+        fail_closed=True,
+    )
+    inline_important_text = visible_html_text(
+        '<p style="display:none!important;display:block">INLINE-IMPORTANT-SECRET</p>',
+        fail_closed=True,
+    )
+    visible_var_fallback = visible_html_text(
+        '<p style="display:var(--missing, block)">VISIBLE-VAR-FALLBACK</p>',
+        fail_closed=True,
+    )
+    check("visibility parser honors important cascade and visible var fallback",
+          "IMPORTANT-SECRET" not in important_hidden_text
+          and "INLINE-IMPORTANT-SECRET" not in inline_important_text
+          and "VISIBLE-VAR-FALLBACK" in visible_var_fallback,
+          f"style={important_hidden_text!r} inline={inline_important_text!r} "
+          f"fallback={visible_var_fallback!r}")
+
+    hidden_equivalents = [
+        'font-size:0%',
+        'font-size:calc(0px)',
+        'font-size:min(0px, 1px)',
+        'transform:scale(0, 0)',
+        'transform:matrix(0,0,0,0,0,0)',
+        'width:0%;height:0%;overflow:hidden',
+        'max-width:0;max-height:0;overflow:hidden',
+        'position:absolute;left:-99999px',
+        'text-indent:-99999px;overflow:hidden;white-space:nowrap',
+        'clip:rect(0, 0, 0, 0)',
+    ]
+    equivalent_results = [
+        visible_html_text(
+            f'<p style="{style}">EQUIVALENT-HIDDEN</p>',
+            fail_closed=True,
+        )
+        for style in hidden_equivalents
+    ]
+    check("visibility parser recognizes equivalent hidden CSS values",
+          all("EQUIVALENT-HIDDEN" not in text for text in equivalent_results),
+          str(equivalent_results))
+
+    ordinary_layout_text = visible_html_text(
+        '<p style="position:absolute;top:20px;left:20px">ABSOLUTE-VISIBLE</p>'
+        '<p style="transform:translateX(10px)">TRANSLATED-VISIBLE</p>'
+        '<p style="scale:.95">SCALED-VISIBLE</p>'
+        '<p style="backdrop-filter:blur(8px)">FILTERED-VISIBLE</p>'
+        '<p style="margin-top:-1px">MARGIN-VISIBLE</p>'
+        '<p style="text-indent:1em">INDENTED-VISIBLE</p>',
+        fail_closed=True,
+    )
+    check("ordinary positioned and transformed layouts remain visible",
+          all(marker in ordinary_layout_text for marker in (
+              "ABSOLUTE-VISIBLE", "TRANSLATED-VISIBLE", "SCALED-VISIBLE",
+              "FILTERED-VISIBLE", "MARGIN-VISIBLE", "INDENTED-VISIBLE",
+          )),
+          repr(ordinary_layout_text))
+
+    ambiguous_text, ambiguous_state = visible_html_evidence(
+        '<p style="font-size:calc(1px - 1px)">AMBIGUOUS-VISIBILITY</p>',
+        fail_closed=True,
+    )
+    check("unresolved functional visibility is excluded and marked ambiguous",
+          ambiguous_state and "AMBIGUOUS-VISIBILITY" not in ambiguous_text,
+          f"ambiguous={ambiguous_state} text={ambiguous_text!r}")
+
+    non_rendered_html = visible_html_text(
+        '<svg><title>SVG-TITLE</title><desc>SVG-DESC</desc></svg>'
+        '<svg><defs><text>SVG-DEFS</text></defs>'
+        '<symbol><text>SVG-SYMBOL</text></symbol>'
+        '<metadata>SVG-METADATA</metadata>'
+        '<clipPath><text>SVG-CLIP</text></clipPath>'
+        '<mask><text>SVG-MASK</text></mask>'
+        '<pattern><text>SVG-PATTERN</text></pattern>'
+        '<text>SVG-RENDERED</text></svg>'
+        '<noembed>NOEMBED-TEXT</noembed>'
+        '<noframes>NOFRAMES-TEXT</noframes>'
+        '<datalist><option>DATALIST-OPTION</option></datalist>'
+        '<ruby>base<rp>RUBY-FALLBACK</rp><rt>annotation</rt></ruby>'
+        '<p>RENDERED-TEXT</p>',
+        fail_closed=True,
+    )
+    check("visible text skips non-rendered metadata and fallback containers",
+          all(marker not in non_rendered_html for marker in (
+              "SVG-TITLE", "SVG-DESC", "SVG-DEFS", "SVG-SYMBOL",
+              "SVG-METADATA", "SVG-CLIP", "SVG-MASK", "SVG-PATTERN",
+              "NOEMBED-TEXT", "NOFRAMES-TEXT", "DATALIST-OPTION",
+              "RUBY-FALLBACK",
+          ))
+          and "SVG-RENDERED" not in non_rendered_html
+          and "RENDERED-TEXT" in non_rendered_html,
+          repr(non_rendered_html))
+
+    hidden_svg_text = visible_html_text(
+        '<svg><text display="none">DISPLAY-SECRET</text>'
+        '<text visibility="hidden">VISIBILITY-SECRET</text>'
+        '<text opacity="0">OPACITY-SECRET</text>'
+        '<text>SVG-VISIBLE</text></svg>',
+        fail_closed=True,
+    )
+    check("visible text respects SVG presentation attributes",
+          all(marker not in hidden_svg_text for marker in (
+              "DISPLAY-SECRET", "VISIBILITY-SECRET", "OPACITY-SECRET",
+          ))
+          and "SVG-VISIBLE" not in hidden_svg_text,
+          repr(hidden_svg_text))
+
+    off_viewport_svg_text = visible_html_text(
+        '<svg viewBox="0 0 100 100">'
+        '<text x="-99999" y="20">OFF-LEFT</text>'
+        '<text x="10000" y="20">OFF-RIGHT</text>'
+        '<text x="101" y="20">JUST-OFF-RIGHT</text>'
+        '<text x="-99" y="20">JUST-OFF-LEFT</text>'
+        '<text x="101%" y="20">PERCENT-OFF-RIGHT</text>'
+        '<text x="99" y="20" dx="10">DELTA-OFF-RIGHT</text>'
+        '<svg x="101" viewBox="0 0 10 10"><text x="0" y="5">NESTED-OFF</text></svg>'
+        '<text x="20" y="20">SVG-IN-VIEW</text></svg>',
+        fail_closed=True,
+    )
+    check("visible text rejects SVG coordinates outside the viewport",
+          "OFF-LEFT" not in off_viewport_svg_text
+          and "OFF-RIGHT" not in off_viewport_svg_text
+          and "JUST-OFF-RIGHT" not in off_viewport_svg_text
+          and "JUST-OFF-LEFT" not in off_viewport_svg_text
+          and "PERCENT-OFF-RIGHT" not in off_viewport_svg_text
+          and "DELTA-OFF-RIGHT" not in off_viewport_svg_text
+          and "NESTED-OFF" not in off_viewport_svg_text
+          and "SVG-IN-VIEW" not in off_viewport_svg_text,
+          repr(off_viewport_svg_text))
+
+    malformed_table = (
+        '<div hidden><table></div>MALFORMED-SECRET</table></div>'
+        '<p>MALFORMED-VISIBLE</p>'
+    )
+    malformed_coverage_text = visible_html_text(malformed_table, fail_closed=True)
+    malformed_residue_text = visible_html_text(malformed_table)
+    check("crossed HTML closes split coverage and residue conservatively",
+          "MALFORMED-SECRET" not in malformed_coverage_text
+          and "MALFORMED-SECRET" in malformed_residue_text,
+          f"coverage={malformed_coverage_text!r} residue={malformed_residue_text!r}")
+
+    optional_end_html = visible_html_text(
+        '<p>PARAGRAPH-FIRST<div>PARAGRAPH-SECOND</div><p>PARAGRAPH-THIRD'
+        '<ul><li>LIST-FIRST<li>LIST-SECOND</ul>'
+        '<table><tr><td>CELL-FIRST<td>CELL-SECOND</tr></table>',
+        fail_closed=True,
+    )
+    check("standard optional HTML end tags preserve visible content",
+          all(marker in optional_end_html for marker in (
+              "PARAGRAPH-FIRST", "PARAGRAPH-SECOND", "PARAGRAPH-THIRD",
+              "LIST-FIRST", "LIST-SECOND", "CELL-FIRST", "CELL-SECOND",
+          )),
+          repr(optional_end_html))
+
+    self_closing_svg_text, self_closing_svg_ambiguous = visible_html_evidence(
+        '<svg viewBox="0 0 100 100"><path d="M0 0L10 10" /></svg>'
+        '<p>VISIBLE-AFTER-SVG</p>',
+        fail_closed=True,
+    )
+    check("SVG foreign-content self-closing tags close without tainting HTML",
+          self_closing_svg_text.strip() == "VISIBLE-AFTER-SVG"
+          and not self_closing_svg_ambiguous,
+          f"text={self_closing_svg_text!r} "
+          f"ambiguous={self_closing_svg_ambiguous}")
+
 
 def test_coverage_checks_asset_attributes() -> None:
-    from content import coverage_issues, html_resource_attributes
+    from checks import visible_html_text
+    from content import (
+        coverage_issues,
+        html_resource_attributes,
+        html_resource_evidence,
+    )
 
     raw = (
         '<img src="./images/product-shot.png" alt="Product">'
-        '<source srcset="images/product-shot@2x.webp 2x, images/product-shot.webp 1x">'
+        '<img src="images/product-shot@2x.webp" alt="Product at high density">'
         '<template><img src="hidden-shot.png"></template>'
         '<a href="linked-only.png">not embedded</a>'
     )
@@ -2240,6 +2617,66 @@ def test_coverage_checks_asset_attributes() -> None:
     missing, _, _ = coverage_issues({"image": "missing-shot.png"}, "", attrs)
     check("coverage accepts image paths present in src and srcset",
           present == [] and checked == 2, f"issues={present} attrs={attrs}")
+
+    hidden_svg_attrs = html_resource_attributes(
+        '<svg><defs><image href="hidden-def.png"></image></defs>'
+        '<symbol><image href="hidden-symbol.png"></image></symbol>'
+        '<image x="0" y="0" width="10" height="10" '
+        'href="visible-svg.png"></image></svg>'
+    )
+    check("asset coverage skips SVG definition resources",
+          hidden_svg_attrs == {"visible-svg.png"}, repr(hidden_svg_attrs))
+
+    hidden_asset_cases = [
+        '<svg><image display="none" href="required.svg"></image></svg>',
+        '<svg><image visibility="hidden" href="required.svg"></image></svg>',
+        '<svg><image opacity="0" href="required.svg"></image></svg>',
+        '<img style="width:0;height:0" src="required.svg">',
+        '<img width="0" height="0" src="required.svg">',
+        '<svg width="0" height="0"><image href="required.svg"></image></svg>',
+        '<img style="position:absolute;left:-99999px" src="required.svg">',
+        '<img style="transform:matrix(0,0,0,0,0,0)" src="required.svg">',
+        '<img style="width:calc(0px);height:calc(0px)" src="required.svg">',
+        '<svg viewBox="0 0 100 100"><image x="-99999" href="required.svg"></image></svg>',
+        '<svg viewBox="0 0 100 100"><image x="10000" href="required.svg"></image></svg>',
+        '<svg viewBox="0 0 100 100"><image x="101" y="0" width="10" height="10" href="required.svg"></image></svg>',
+        '<svg viewBox="0 0 100 100"><image x="101%" y="0" width="10" height="10" href="required.svg"></image></svg>',
+        '<svg viewBox="0 0 100 100"><svg x="101"><image x="0" y="0" width="10" height="10" href="required.svg"></image></svg></svg>',
+        '<svg viewBox="0 0 100 100"><defs><clipPath id="empty"></clipPath></defs>'
+        '<image x="0" y="0" width="20" height="20" '
+        'clip-path="url(#empty)" href="required.svg"></image></svg>',
+        '<svg viewBox="0 0 100 100"><defs><mask id="empty"></mask></defs>'
+        '<image x="0" y="0" width="20" height="20" '
+        'mask="url(#empty)" href="required.svg"></image></svg>',
+        '<svg viewBox="0 0 100 100"><defs><filter id="empty"></filter></defs>'
+        '<image x="0" y="0" width="20" height="20" '
+        'filter="url(#empty)" href="required.svg"></image></svg>',
+    ]
+    check("asset coverage rejects non-rendered CSS and presentation forms",
+          all(not html_resource_attributes(case) for case in hidden_asset_cases),
+          str([html_resource_attributes(case) for case in hidden_asset_cases]))
+
+    deterministic_attrs, responsive_ambiguous = html_resource_evidence(
+        '<img src="required.svg">'
+        '<img srcset="a.png 1x,b.png 2x">'
+    )
+    check("responsive ambiguity preserves unrelated deterministic resources",
+          deterministic_attrs == {"required.svg"} and responsive_ambiguous,
+          f"attrs={deterministic_attrs} ambiguous={responsive_ambiguous}")
+    hidden_responsive_attrs, hidden_responsive_ambiguous = html_resource_evidence(
+        '<div hidden><img srcset="a.png 1x,b.png 2x"></div>'
+    )
+    check("hidden responsive resources do not degrade asset evidence",
+          hidden_responsive_attrs == set() and not hidden_responsive_ambiguous,
+          f"attrs={hidden_responsive_attrs} "
+          f"ambiguous={hidden_responsive_ambiguous}")
+    svg_then_asset, svg_then_asset_ambiguous = html_resource_evidence(
+        '<svg viewBox="0 0 100 100"><path d="M0 0L10 10" /></svg>'
+        '<img src="required.svg">'
+    )
+    check("self-closing SVG graphics preserve following resource evidence",
+          svg_then_asset == {"required.svg"} and not svg_then_asset_ambiguous,
+          f"attrs={svg_then_asset} ambiguous={svg_then_asset_ambiguous}")
     check("coverage rejects omitted image assets",
           len(missing) == 1 and "missing-shot.png" in missing[0], str(missing))
     hidden, _, _ = coverage_issues(
@@ -2265,6 +2702,147 @@ def test_coverage_checks_asset_attributes() -> None:
           len(wrong_origin) == 1, str(wrong_origin))
     check("required absolute assets tolerate cache-query changes on the same origin and path",
           same_origin == [], str(same_origin))
+
+    local_absolute_remote_copy, _, _ = coverage_issues(
+        ["/approved/brand/logo.svg"],
+        "",
+        html_resource_attributes(
+            '<img src="https://attacker.example/approved/brand/logo.svg">'
+        ),
+        root_path="brief.required_assets",
+        force_assets=True,
+    )
+    local_absolute_exact, _, _ = coverage_issues(
+        ["/approved/brand/logo.svg"],
+        "",
+        html_resource_attributes('<img src="/approved/brand/logo.svg">'),
+        root_path="brief.required_assets",
+        force_assets=True,
+    )
+    check("required local absolute assets reject remote path impersonation",
+          len(local_absolute_remote_copy) == 1 and local_absolute_exact == [],
+          f"remote={local_absolute_remote_copy} exact={local_absolute_exact}")
+
+    malformed_hidden_attrs = html_resource_attributes(
+        '<div hidden><img></img><img src="hidden-after-void.svg"></div>'
+        '<img hidden src="hidden-void.svg">'
+        '<img src="visible.svg">'
+    )
+    check("resource parser keeps hidden scope across a void closing tag",
+          malformed_hidden_attrs == {"visible.svg"},
+          str(sorted(malformed_hidden_attrs)))
+
+    self_closing_hidden_attrs = html_resource_attributes(
+        '<div hidden/><img src="hidden-self-closing.svg"></div>'
+        '<img src="visible-after-self-closing.svg">'
+    )
+    check("resource parser follows HTML semantics for non-void self-closing tags",
+          self_closing_hidden_attrs == {"visible-after-self-closing.svg"},
+          str(sorted(self_closing_hidden_attrs)))
+
+    css_hidden_attrs = html_resource_attributes(
+        '<style>.concealed img { display: none } '
+        '.escaped { d\\69splay: n\\6f ne } '
+        '[hidden] { display: none } '
+        ':root { --fallback-display: none }</style>'
+        '<div class="concealed"><img src="hidden-by-selector.svg"></div>'
+        '<img style="display/**/: none" src="hidden-by-inline-comment.svg">'
+        '<img class="escaped" src="hidden-by-css-escape.svg">'
+        '<img hidden src="hidden-by-attribute.svg">'
+        '<img src="visible-after-css.svg">'
+    )
+    check("resource parser fails closed on compound and comment-split hidden CSS",
+          css_hidden_attrs == {"visible-after-css.svg"},
+          str(sorted(css_hidden_attrs)))
+
+    ambiguous_css_cases = [
+        (
+            '<style>div:not(.show) img { display: none }</style>'
+            '<div><img src="hidden-by-not.svg"></div>',
+            "hidden-by-not.svg",
+        ),
+        (
+            '<style>[data-state^="hid"] { display: none }</style>'
+            '<p data-state="hidden">HIDDEN-BY-ATTR-OPERATOR</p>',
+            "HIDDEN-BY-ATTR-OPERATOR",
+        ),
+        (
+            '<style>.marker + p { display: none }</style>'
+            '<span class="marker"></span><p>HIDDEN-BY-SIBLING</p>',
+            "HIDDEN-BY-SIBLING",
+        ),
+        (
+            '<style>.hidden-by-var { --hide: none; display: var(--hide) }</style>'
+            '<img class="hidden-by-var" src="hidden-by-var.svg">',
+            "hidden-by-var.svg",
+        ),
+        (
+            '<style>.h\\69 dden { visibility: collapse }</style>'
+            '<img class="hidden" src="hidden-by-selector-escape.svg">',
+            "hidden-by-selector-escape.svg",
+        ),
+        (
+            '<link rel="style&#115;heet" '
+            'href="data:text/css,.x%7Bdisplay%3Anone%7D">'
+            '<img class="x" src="hidden-by-encoded-stylesheet.svg">',
+            "hidden-by-encoded-stylesheet.svg",
+        ),
+        (
+            '<style>@\\69mport url("data:text/css,.x%7Bdisplay%3Anone%7D")</style>'
+            '<img class="x" src="hidden-by-escaped-import.svg">',
+            "hidden-by-escaped-import.svg",
+        ),
+    ]
+    ambiguous_results = [
+        (
+            marker,
+            visible_html_text(raw, fail_closed=True),
+            html_resource_attributes(raw),
+        )
+        for raw, marker in ambiguous_css_cases
+    ]
+    check("unsupported hiding CSS fails closed instead of partially matching",
+          all(
+              marker not in text and marker not in attrs
+              for marker, text, attrs in ambiguous_results
+          ),
+          str(ambiguous_results))
+
+    responsive_attrs = html_resource_attributes(
+        '<picture>'
+        '<source media="(min-width:99999px)" srcset="never-selected.svg">'
+        '<img src="actual.svg" srcset="candidate-1.svg 1x, candidate-2.svg 2x">'
+        '</picture>'
+    )
+    check("resource parser excludes unresolved responsive candidates",
+          responsive_attrs == set(),
+          str(sorted(responsive_attrs)))
+    picture_fallback_attrs = html_resource_attributes(
+        '<picture>'
+        '<source media="(min-width:1px)" srcset="actual.svg">'
+        '<img src="required-fallback.svg">'
+        '</picture>'
+    )
+    bare_source_attrs = html_resource_attributes(
+        '<source srcset="bare-unrendered.svg">'
+    )
+    check("picture fallbacks and bare sources cannot prove required assets",
+          picture_fallback_attrs == set() and bare_source_attrs == set(),
+          f"picture={sorted(picture_fallback_attrs)} bare={sorted(bare_source_attrs)}")
+
+    remote_base, _, _ = coverage_issues(
+        ["approved/logo.svg"],
+        "",
+        html_resource_attributes(
+            '<base href="https://attacker.example/">'
+            '<img src="approved/logo.svg">'
+        ),
+        root_path="brief.required_assets",
+        force_assets=True,
+    )
+    check("required local assets reject a remote base URL",
+          len(remote_base) == 1,
+          str(remote_base))
 
 
 def test_coverage_caps_adversarial_reports() -> None:
@@ -2319,6 +2897,8 @@ def test_mcp_server_stdio_protocol() -> None:
     payload = json.loads(body)
     check("mcp kami_templates returns registries and schema types",
           set(payload.get("document_templates", {})) == set(HTML_TEMPLATES)
+          and set(payload.get("pptx_templates", {})) == {"slides", "slides-en"}
+          and set(payload.get("marp_templates", {})) == set(MARP_TEMPLATES)
           and payload.get("content_schema_types"),
           body[:200])
     doctor_body = replies.get(4, {}).get("result", {}).get("content", [{}])[0].get("text", "{}")
@@ -2342,11 +2922,41 @@ def test_mcp_check_returns_stable_findings_and_coverage() -> None:
         broken = Path(d) / "broken.html"
         clean.write_text("<html><body><p>Ready</p></body></html>", encoding="utf-8")
         broken.write_text("<html><body><p>{{ missing }}</p></body></html>", encoding="utf-8")
+        invalid_content = Path(d) / "invalid-content.json"
+        invalid_content.write_text(
+            json.dumps({"type": "letter", "lang": "en", "content": {}}),
+            encoding="utf-8",
+        )
+        valid_content = Path(d) / "valid-content.json"
+        valid_content.write_text(json.dumps({
+            "type": "letter",
+            "lang": "en",
+            "content": {
+                "sender": "Ada Lovelace, London",
+                "date": "2026-07-13",
+                "recipient": "Charles Babbage",
+                "salutation": "Dear Charles,",
+                "paragraphs": [
+                    "I write to state my purpose in one sentence: the engine deserves a program of its own.",
+                    "The evidence sits in the notes: fifty operations, one loop, and a table the machine can follow.",
+                    "My ask is specific: review the table this month so we can test it on the mill.",
+                ],
+                "signoff": "Sincerely,",
+                "signature": "Ada",
+            },
+        }), encoding="utf-8")
         clean_result = tool_check({"path": str(clean)})
         broken_result = tool_check({"path": str(broken)})
+        invalid_content_result = tool_check({
+            "path": str(clean), "content": str(invalid_content),
+        })
+        missing_coverage_result = tool_check({
+            "path": str(clean), "content": str(valid_content),
+        })
 
     check("MCP check registry carries unique stable rule IDs",
-          len(CHECK_REGISTRY) == len(set(CHECK_REGISTRY))
+          CHECK_REGISTRY and clean_result["ruleset_version"] == 2
+          and len(CHECK_REGISTRY) == len(set(CHECK_REGISTRY))
           and all({"scope", "severity", "required_engine", "explanation"} <= set(rule)
                   for rule in CHECK_REGISTRY.values()),
           str(CHECK_REGISTRY))
@@ -2364,6 +2974,27 @@ def test_mcp_check_returns_stable_findings_and_coverage() -> None:
           and broken_result["findings"][0]["status"] == "failed"
           and "placeholder" in broken_result["report"].lower(),
           json.dumps(broken_result)[:500])
+    invalid_ids = [item["id"] for item in invalid_content_result["findings"]]
+    invalid_coverage = {
+        item["id"]: item for item in invalid_content_result["coverage"]
+    }
+    check("MCP labels invalid content IR as contract failure before coverage",
+          "content.contract" in invalid_ids
+          and "content.coverage" not in invalid_ids
+          and invalid_coverage["content.coverage"]["status"] == "not_run"
+          and invalid_coverage["content.coverage"]["blocked_by"]
+          == "content.contract",
+          json.dumps(invalid_content_result)[:800])
+    missing_ids = [item["id"] for item in missing_coverage_result["findings"]]
+    missing_statuses = {
+        item["id"]: item["status"]
+        for item in missing_coverage_result["coverage"]
+    }
+    check("MCP runs coverage once after a valid content contract",
+          missing_ids == ["content.coverage"]
+          and missing_statuses["content.contract"] == "passed"
+          and missing_statuses["content.coverage"] == "failed",
+          json.dumps(missing_coverage_result)[:800])
 
 
 def test_mcp_server_rejects_bad_frames_without_exiting() -> None:
