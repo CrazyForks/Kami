@@ -148,9 +148,9 @@ python3 scripts/tests/test_build.py          # zero-dependency test suite
   "no analytics" copy elsewhere.
 - Landing or documentation-site work follows `references/design.md` Section 11 «Landing
   Page (screen-first)»: its «Documentation site» subsection for the doc shell (sidebar
-  rail, on-this-page TOC, borderless prev/next pager), then «Responsive screenshot
-  verification» (screenshot at 375px / 1280px per locale, objective line-widow scan)
-  before shipping.
+  rail, on-this-page TOC, borderless prev/next pager), then Section 12 «Responsive
+  screenshot verification» (screenshot at 375px / 1280px per locale, objective
+  line-widow scan) before shipping.
 - Content changes should avoid CSS churn unless layout behavior is part of the task.
 - Brand profile support is optional context. Keep public examples in `references/`; do
   not hard-code a maintainer's private local profile.
@@ -198,10 +198,13 @@ proof, not metadata proof. Claude Code: an isolated `HOME=/tmp/...` smoke with
   splitting `build.py` or a package helper into new modules, confirm each new file is
   tracked by Git and added to the scripts allowlist in `package-skill.sh` (its
   coverage gate fails the build otherwise).
-- Any source change adding scripts, templates, reference JSON, workflows, or package
-  inputs must refresh and inspect `dist/kami.zip`. Package freshness is release
-  readiness, not later cleanup. For any change to `SKILL.md`, templates, scripts,
-  references, or package inputs, decide explicitly whether the ZIP needs a rebuild.
+- Any source change to `SKILL.md`, scripts, templates, reference JSON, workflows, or
+  package inputs must refresh and inspect `dist/kami.zip`. Package freshness is release
+  readiness, not later cleanup. It is also the precondition for telling a reporter a fix
+  has shipped: a commit on `main` reaches `npx skills add` and plugin installs right
+  away, but Claude Desktop users download
+  `releases/latest/download/kami.zip`, so name the channel that actually carries the fix
+  and confirm that asset was refreshed before saying "fixed, please update".
 - If `python3 scripts/build.py --verify` fails only because the host Python lacks PPTX
   fallback dependencies such as `python-pptx`, verify `slides` and `slides-en` from a
   temporary venv instead of treating the environment miss as a source regression.
@@ -251,7 +254,7 @@ dependency.
   unlimited). An undershooting document is never flagged, so "this long-doc came out
   at 3 pages" is an authoring judgment call, not a gate failure. Landing pages are
   browser-only HTML with no page count at all.
-- `scripts/build.py` sets PDF `/Author` from `git config user.name` or `KAMI_AUTHOR`
+- `scripts/render.py` sets PDF `/Author` from `git config user.name` or `KAMI_AUTHOR`
   only when the template still holds an author placeholder. `/Producer` and `/Creator`
   stay `Kami`.
 - Long-doc TOCs use WeasyPrint `target-counter()` and stable chapter ids for rendered
@@ -329,8 +332,8 @@ drift out of it:
   they are Latin documents, so `Charter` stays first there.
 - The commercial TsangerJinKai02 files never ship inside the skill package, so a
   sandboxed install has no primary CJK serif and falls through the chain. Keep the
-  chain wide (Source Han Serif SC and CN, Noto Serif CJK SC and SC, Songti SC, STSong,
-  SimSun) so it lands on some serif rather than a system sans.
+  chain wide (Source Han Serif SC and CN, Noto Serif CJK SC and Noto Serif SC, Songti
+  SC, STSong, SimSun) so it lands on some serif rather than a system sans.
 - `bash scripts/ensure-fonts.sh` downloads into the XDG user font dir
   (`${XDG_DATA_HOME:-~/.local/share}/fonts/kami`, override with `KAMI_FONT_DIR`),
   never into the skill's `assets/fonts`, so an installed Claude Desktop skill stays
